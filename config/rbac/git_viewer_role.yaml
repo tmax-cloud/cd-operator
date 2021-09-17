@@ -1,0 +1,20 @@
+# permissions for end users to view gits.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: git-viewer-role
+rules:
+- apiGroups:
+  - cd.tmax.io
+  resources:
+  - gits
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cd.tmax.io
+  resources:
+  - gits/status
+  verbs:
+  - get

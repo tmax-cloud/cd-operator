@@ -20,11 +20,15 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"github.com/operator-framework/operator-lib/status"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"github.com/tmax-cloud/cd-operator/internal/utils"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // ApplicationReconciler reconciles a Application object
@@ -37,22 +41,101 @@ type ApplicationReconciler struct {
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications/finalizers,verbs=update
+func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+	ctx := context.Background()
+	log := r.Log.WithValues("Application", req.NamespacedName)
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Application object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
-func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = r.Log.WithValues("application", req.NamespacedName)
+	instance := &cdv1.Application{}
+	if err := r.Client.Get(ctx, req.NamespacedName, instance); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "")
+		return ctrl.Result{}, err
+	}
+	original := instance.DeepCopy()
 
-	// your logic here
+	// New Condition default
+	cond := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
+	if cond == nil {
+		cond = &status.Condition{
+			Type:   cdv1.ApplicationConditionReady,
+			Status: corev1.ConditionFalse,
+		}
+	}
+
+	defer func() {
+		instance.Status.Conditions.SetCondition(*cond)
+		p := client.MergeFrom(original)
+		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
+			log.Error(err, "")
+		}
+	}()
+
+	/*
+		exit, err := r.handleFinalizer(instance, original)
+		if err != nil {
+			log.Error(err, "")
+			cond.Reason = "CannotHandleFinalizer"
+			cond.Message = err.Error()
+			return ctrl.Result{}, nil
+		}
+		if exit {
+			return ctrl.Result{}, nil
+		}
+	*/
+
+	// Set secret
+	secretChanged := r.setSecretString(instance) // 뭐지?
+
+	// Set webhook registered
+	// webhookConditionChanged := r.setWebhookRegisteredCond(instance)
+
+	// Set ready
+	readyConditionChanged := r.setReadyCond(instance)
+
+	// If conditions changed, update status
+	if secretChanged || /*webhookConditionChanged ||*/ readyConditionChanged {
+		p := client.MergeFrom(original)
+		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
+			log.Error(err, "")
+			return ctrl.Result{}, err
+		}
+	}
 
 	return ctrl.Result{}, nil
+}
+
+// Set status.secrets, return if it's changed or not
+func (r *ApplicationReconciler) setSecretString(instance *cdv1.Application) bool {
+	secretChanged := false
+	if instance.Status.Secrets == "" {
+		instance.Status.Secrets = utils.RandomString(20)
+		secretChanged = true
+	}
+
+	return secretChanged
+}
+
+// Set ready condition, return if it's changed or not
+func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) bool {
+	ready := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
+	if ready == nil {
+		ready = &status.Condition{
+			Type:   cdv1.ApplicationConditionReady,
+			Status: corev1.ConditionFalse,
+		}
+	}
+
+	// TODO
+	// // For now, only checked is if webhook-registered is true & secrets are set
+	// webhookRegistered := instance.Status.Conditions.GetCondition(cicdv1.IntegrationConfigConditionWebhookRegistered)
+	// if instance.Status.Secrets != "" && webhookRegistered != nil && (webhookRegistered.Status == corev1.ConditionTrue || webhookRegistered.Reason == cicdv1.IntegrationConfigConditionReasonNoGitToken) {
+	// 	ready.Status = corev1.ConditionTrue
+	// }
+	readyConditionChanged := instance.Status.Conditions.SetCondition(*ready)
+
+	return readyConditionChanged
 }
 
 // SetupWithManager sets up the controller with the Manager.

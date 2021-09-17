@@ -1,0 +1,24 @@
+# permissions for end users to edit gits.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: git-editor-role
+rules:
+- apiGroups:
+  - cd.tmax.io
+  resources:
+  - gits
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cd.tmax.io
+  resources:
+  - gits/status
+  verbs:
+  - get
