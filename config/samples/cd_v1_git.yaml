@@ -1,0 +1,7 @@
+apiVersion: cd.tmax.io/v1
+kind: Git
+metadata:
+  name: git-sample
+spec:
+  # Add fields here
+  foo: bar
