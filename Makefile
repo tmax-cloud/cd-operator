@@ -93,13 +93,15 @@ test: manifests generate fmt vet ## Run tests.
 .PHONY: docker-build
 docker-build: docker-build-controller
 
-docker-build-controller: docker build . -f build/controller/Dockerfile -t ${IMG_CONTROLLER}
+docker-build-controller:
+	docker build . -f build/controller/Dockerfile -t ${IMG_CONTROLLER}
 
 ##@ Push
 .PHONY: docker-push
 docker-push: docker-push-controller
 
-docker-push-controller: docker push ${IMG_CONTROLLER}
+docker-push-controller:
+	docker push ${IMG_CONTROLLER}
 
 ##@ Deployment
 
