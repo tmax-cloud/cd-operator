@@ -19,7 +19,8 @@ require (
 	github.com/operator-framework/operator-lib v0.1.0
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.6.0 // indirect
-	github.com/stretchr/testify v1.7.0 // indirect
+	github.com/sourcegraph/go-diff v0.6.1
+	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.15.0 // indirect
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
@@ -36,7 +37,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20200410145947-bcb3869e6f29 // indirect
 	sigs.k8s.io/controller-runtime v0.6.4
 	sigs.k8s.io/structured-merge-diff/v3 v3.0.1-0.20200706213357-43c19bbb7fba // indirect
-  github.com/sourcegraph/go-diff v0.6.1
 )
 
 replace (
