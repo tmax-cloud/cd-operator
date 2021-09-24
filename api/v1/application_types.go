@@ -35,7 +35,10 @@ const (
 // ApplicationSpec defines the desired state of Application
 type ApplicationSpec struct {
 	// Git config for target repository
-	Git GitConfig `json:"git"`
+	Git          GitConfig             `json:"git"`
+	Revision     string                `json:"revision"`
+	Path         string                `json:"path"`
+	ManifestType ApplicationSourceType `json:"manifestType"`
 }
 
 // ApplicationStatus defines the observed state of Application
@@ -65,6 +68,19 @@ type ApplicationList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Application `json:"items"`
 }
+
+// TODO
+// ApplicationSourceType specifies the type of the application's source
+type ApplicationSourceType string
+
+const (
+	ApplicationSourceTypePlainYAML ApplicationSourceType = "PlainYAML"
+	ApplicationSourceTypeHelm      ApplicationSourceType = "Helm"
+	ApplicationSourceTypeKustomize ApplicationSourceType = "Kustomize"
+	ApplicationSourceTypeKsonnet   ApplicationSourceType = "Ksonnet"
+	ApplicationSourceTypeDirectory ApplicationSourceType = "Directory"
+	ApplicationSourceTypePlugin    ApplicationSourceType = "Plugin"
+)
 
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})
