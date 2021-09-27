@@ -27,3 +27,11 @@ func TestGetManifestURL(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, result, "https://raw.githubusercontent.com/argoproj/argocd-example-apps/master/guestbook/guestbook-ui-svc.yaml")
 }
+
+func TestApplyManifest(t *testing.T) {
+	var m ManifestManager
+	url := "https://raw.githubusercontent.com/argoproj/argocd-example-apps/master/guestbook/guestbook-ui-svc.yaml"
+
+	err := m.ApplyManifest(url)
+	assert.Equal(t, err, nil)
+}
