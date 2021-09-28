@@ -39,6 +39,11 @@ type ApplicationSpec struct {
 	Revision     string                `json:"revision"`
 	Path         string                `json:"path"`
 	ManifestType ApplicationSourceType `json:"manifestType"`
+
+	// Source is a reference to the location of the application's manifests or chart
+	Source ApplicationSource `json:"source"`
+	// Destination is a reference to the target Kubernetes server and namespace
+	Destination ApplicationDestination `json:"destination"`
 }
 
 // ApplicationStatus defines the observed state of Application
@@ -67,6 +72,27 @@ type ApplicationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Application `json:"items"`
+}
+
+type ApplicationSource struct {
+	// RepoURL is the URL to the repository (Git) that contains the application manifests
+	RepoURL string `json:"repoURL"`
+	// Path is a directory path within the Git repository, and is only valid for applications sourced from Git.
+	Path string `json:"path,omitempty"`
+	// TargetRevision defines the revision of the source to sync the application to.
+	// In case of Git, this can be commit, tag, or branch. If omitted, will equal to HEAD.
+	// In case of Helm, this is a semver tag for the Chart's version.
+	TargetRevision string `json:"targetRevision,omitempty"`
+}
+
+type ApplicationDestination struct {
+	// Server specifies the URL of the target cluster and must be set to the Kubernetes control plane API
+	Server string `json:"server,omitempty"`
+	// Namespace specifies the target namespace for the application's resources.
+	// The namespace will only be set for namespace-scoped resources that have not set a value for .metadata.namespace
+	Namespace string `json:"namespace,omitempty"`
+	// Name is an alternate way of specifying the target cluster by its symbolic name
+	Name string `json:"name,omitempty"`
 }
 
 // TODO

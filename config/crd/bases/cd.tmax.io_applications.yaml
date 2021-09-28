@@ -36,6 +36,24 @@ spec:
           spec:
             description: ApplicationSpec defines the desired state of Application
             properties:
+              destination:
+                description: Destination is a reference to the target Kubernetes server
+                  and namespace
+                properties:
+                  name:
+                    description: Name is an alternate way of specifying the target
+                      cluster by its symbolic name
+                    type: string
+                  namespace:
+                    description: Namespace specifies the target namespace for the
+                      application's resources. The namespace will only be set for
+                      namespace-scoped resources that have not set a value for .metadata.namespace
+                    type: string
+                  server:
+                    description: Server specifies the URL of the target cluster and
+                      must be set to the Kubernetes control plane API
+                    type: string
+                type: object
               git:
                 description: Git config for target repository
                 properties:
@@ -104,11 +122,34 @@ spec:
                 type: string
               revision:
                 type: string
+              source:
+                description: Source is a reference to the location of the application's
+                  manifests or chart
+                properties:
+                  path:
+                    description: Path is a directory path within the Git repository,
+                      and is only valid for applications sourced from Git.
+                    type: string
+                  repoURL:
+                    description: RepoURL is the URL to the repository (Git or Helm)
+                      that contains the application manifests
+                    type: string
+                  targetRevision:
+                    description: TargetRevision defines the revision of the source
+                      to sync the application to. In case of Git, this can be commit,
+                      tag, or branch. If omitted, will equal to HEAD. In case of Helm,
+                      this is a semver tag for the Chart's version.
+                    type: string
+                required:
+                - repoURL
+                type: object
             required:
+            - destination
             - git
             - manifestType
             - path
             - revision
+            - source
             type: object
           status:
             description: ApplicationStatus defines the observed state of Application
