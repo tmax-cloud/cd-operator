@@ -1,6 +1,7 @@
 package manifestmanager
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/bmizerany/assert"
@@ -9,28 +10,28 @@ import (
 
 func TestGetManifestURL(t *testing.T) {
 	var m ManifestManager
+	// https://github.com/tmax-cloud/cd-operator.git
 	// api.github.com/repos/argoproj/argocd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=master
 
 	app := &cdv1.Application{}
 	app.Spec = cdv1.ApplicationSpec{
-		Git: cdv1.GitConfig{
-			Type:       cdv1.GitTypeGitHub,
-			Repository: "argoproj/argocd-example-apps",
+		Source: cdv1.ApplicationSource{
+			RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
+			Path:           "guestbook/guestbook-ui-svc.yaml", // 아직 single yaml만 가능
+			TargetRevision: "main",
 		},
-		Revision:     "master",
-		Path:         "guestbook/guestbook-ui-svc.yaml",
-		ManifestType: cdv1.ApplicationSourceTypePlainYAML,
 	}
 
 	result, err := m.GetManifestURL(app)
+	fmt.Println(result)
 	t.Log(result)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, result, "https://raw.githubusercontent.com/argoproj/argocd-example-apps/master/guestbook/guestbook-ui-svc.yaml")
+	assert.Equal(t, result, "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml")
 }
 
 func TestApplyManifest(t *testing.T) {
 	var m ManifestManager
-	url := "https://raw.githubusercontent.com/argoproj/argocd-example-apps/master/guestbook/guestbook-ui-svc.yaml"
+	url := "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"
 
 	err := m.ApplyManifest(url)
 	assert.Equal(t, err, nil)

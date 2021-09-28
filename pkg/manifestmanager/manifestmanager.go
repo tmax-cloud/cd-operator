@@ -28,13 +28,12 @@ type DownloadURL struct {
 
 // GetManifestURL gets a url of manifest file
 func (m *ManifestManager) GetManifestURL(app *cdv1.Application) (string, error) {
-	apiUrl := app.Spec.Git.GetAPIUrl()
-	repo := app.Spec.Git.Repository // {owner}/{repo}
-	revision := app.Spec.Revision   // branch, tag, sha..
-	path := app.Spec.Path
+	apiUrl := app.Spec.Source.GetAPIUrl()
+	repo := app.Spec.Source.GetRepository()
+	revision := app.Spec.Source.TargetRevision // branch, tag, sha..
+	path := app.Spec.Source.Path
 
 	apiURL := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", apiUrl, repo, path, revision)
-	log.Info(apiURL)
 
 	// Get download_url of manifest file
 	resp, err := http.Get(apiURL)
@@ -96,15 +95,16 @@ func (m *ManifestManager) ApplyManifest(url string) error {
 		return err
 	}
 
-	// TODO - fix it. use owner's namespace
+	// TODO - fix it. use Application.Spec.Destination.Namespace
 	if len(unstObj.GetNamespace()) == 0 {
 		unstObj.SetNamespace("default")
 	}
 
 	if err := c.Create(context.Background(), unstObj); err != nil {
-		panic(err)
-		//log.Error(err, "Creating Object failed..")
-		//return err
+		log.Error(err, "Creating Object failed..")
+		// TODO
+		// it can be 'services "guestbook-ui" already exists' err.
+		// return err
 	}
 
 	return nil

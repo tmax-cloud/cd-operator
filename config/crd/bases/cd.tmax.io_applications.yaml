@@ -36,79 +36,48 @@ spec:
           spec:
             description: ApplicationSpec defines the desired state of Application
             properties:
-              git:
-                description: Git config for target repository
+              destination:
+                description: Destination is a reference to the target Kubernetes server
+                  and namespace
                 properties:
-                  apiUrl:
-                    description: APIUrl for api server (e.g., https://api.github.com
-                      for github type), for the case where the git repository is self-hosted
-                      (should contain specific protocol otherwise webhook server returns
-                      error) Also, it should *NOT* contain repository path (e.g.,
-                      tmax-cloud/cicd-operator)
+                  name:
+                    description: Name is an alternate way of specifying the target
+                      cluster by its symbolic name
                     type: string
-                  repository:
-                    description: Repository name of git repository (in <org>/<repo>
-                      form, e.g., tmax-cloud/cicd-operator)
-                    pattern: .+/.+
+                  namespace:
+                    description: Namespace specifies the target namespace for the
+                      application's resources. The namespace will only be set for
+                      namespace-scoped resources that have not set a value for .metadata.namespace
                     type: string
-                  token:
-                    description: Token is a token for accessing the remote git server.
-                      It can be empty, if you don't want to register a webhook to
-                      the git server
-                    properties:
-                      value:
-                        description: Value is un-encrypted plain string of git token,
-                          not recommended
-                        type: string
-                      valueFrom:
-                        description: ValueFrom refers secret. Recommended
-                        properties:
-                          secretKeyRef:
-                            description: SecretKeySelector selects a key of a Secret.
-                            properties:
-                              key:
-                                description: The key of the secret to select from.  Must
-                                  be a valid secret key.
-                                type: string
-                              name:
-                                description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                  TODO: Add other useful fields. apiVersion, kind,
-                                  uid?'
-                                type: string
-                              optional:
-                                description: Specify whether the Secret or its key
-                                  must be defined
-                                type: boolean
-                            required:
-                            - key
-                            type: object
-                        required:
-                        - secretKeyRef
-                        type: object
-                    type: object
-                  type:
-                    description: Type for git remote server
-                    enum:
-                    - github
-                    - gitlab
+                  server:
+                    description: Server specifies the URL of the target cluster and
+                      must be set to the Kubernetes control plane API
+                    type: string
+                type: object
+              source:
+                description: Source is a reference to the location of the application's
+                  manifests or chart
+                properties:
+                  path:
+                    description: Path is a directory path within the Git repository,
+                      and is only valid for applications sourced from Git.
+                    type: string
+                  repoURL:
+                    description: RepoURL is the URL to the repository (Git) that contains
+                      the application manifests
+                    type: string
+                  targetRevision:
+                    description: TargetRevision defines the revision of the source
+                      to sync the application to. In case of Git, this can be commit,
+                      tag, or branch. If omitted, will equal to HEAD. In case of Helm,
+                      this is a semver tag for the Chart's version.
                     type: string
                 required:
-                - repository
-                - type
+                - repoURL
                 type: object
-              manifestType:
-                description: TODO ApplicationSourceType specifies the type of the
-                  application's source
-                type: string
-              path:
-                type: string
-              revision:
-                type: string
             required:
-            - git
-            - manifestType
-            - path
-            - revision
+            - destination
+            - source
             type: object
           status:
             description: ApplicationStatus defines the observed state of Application
