@@ -44,11 +44,11 @@ spec:
                       for github type), for the case where the git repository is self-hosted
                       (should contain specific protocol otherwise webhook server returns
                       error) Also, it should *NOT* contain repository path (e.g.,
-                      tmax-cloud/cicd-operator)
+                      tmax-cloud/cd-operator)
                     type: string
                   repository:
                     description: Repository name of git repository (in <org>/<repo>
-                      form, e.g., tmax-cloud/cicd-operator)
+                      form, e.g., tmax-cloud/cd-operator)
                     pattern: .+/.+
                     type: string
                   token:
@@ -97,8 +97,8 @@ spec:
                 - type
                 type: object
               manifestType:
-                description: TODO ApplicationSourceType specifies the type of the
-                  application's source
+                description: ApplicationSourceType specifies the type of the application's
+                  source
                 type: string
               path:
                 type: string
@@ -114,7 +114,7 @@ spec:
             description: ApplicationStatus defines the observed state of Application
             properties:
               conditions:
-                description: Conditions of IntegrationConfig
+                description: Conditions of Application
                 items:
                   description: "Condition represents an observation of an object's
                     state. Conditions are an extension mechanism intended to be used

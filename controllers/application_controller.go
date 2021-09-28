@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"github.com/operator-framework/operator-lib/status"
@@ -40,6 +41,7 @@ type ApplicationReconciler struct {
 
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=secrets;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile reconciles Application
 func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
@@ -90,13 +92,13 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	secretChanged := r.setSecretString(instance) // 뭐지?
 
 	// Set webhook registered
-	// webhookConditionChanged := r.setWebhookRegisteredCond(instance)
+	webhookConditionChanged := r.setWebhookRegisteredCond(instance)
 
 	// Set ready
 	readyConditionChanged := r.setReadyCond(instance)
 
 	// If conditions changed, update status
-	if secretChanged || /*webhookConditionChanged ||*/ readyConditionChanged {
+	if secretChanged || webhookConditionChanged || readyConditionChanged {
 		p := client.MergeFrom(original)
 		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
 			log.Error(err, "")
@@ -118,6 +120,69 @@ func (r *ApplicationReconciler) setSecretString(instance *cdv1.Application) bool
 	return secretChanged
 }
 
+// Set webhook-registered condition, return if it's changed or not
+func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Application) bool {
+	webhookConditionChanged := false
+	webhookRegistered := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionWebhookRegistered)
+	if webhookRegistered == nil {
+		webhookRegistered = &status.Condition{
+			Type:   cdv1.ApplicationConditionWebhookRegistered,
+			Status: corev1.ConditionFalse,
+		}
+	}
+
+	// If token is empty, skip to register
+	if instance.Spec.Git.Token == nil {
+		webhookRegistered.Reason = cdv1.ApplicationConditionReasonNoGitToken
+		webhookRegistered.Message = "Skipped to register webhook"
+		webhookConditionChanged = instance.Status.Conditions.SetCondition(*webhookRegistered)
+		return webhookConditionChanged
+	}
+
+	// Register only if the condition is false
+	if webhookRegistered.IsFalse() {
+		webhookRegistered.Status = corev1.ConditionFalse
+		webhookRegistered.Reason = ""
+		webhookRegistered.Message = ""
+
+		gitCli, err := utils.GetGitCli(instance, r.Client)
+		if err != nil {
+			webhookRegistered.Reason = "invalidGitType"
+			webhookRegistered.Message = fmt.Sprintf("git type %s is not supported", instance.Spec.Git.Type)
+		} else {
+			addr := instance.GetWebhookServerAddress()
+			isUnique := true
+			r.Log.Info("Registering webhook " + addr)
+			entries, err := gitCli.ListWebhook()
+			if err != nil {
+				webhookRegistered.Reason = "webhookRegisterFailed"
+				webhookRegistered.Message = err.Error()
+			}
+			for _, e := range entries {
+				if addr == e.URL {
+					webhookRegistered.Reason = "webhookRegisterFailed"
+					webhookRegistered.Message = "same webhook has already registered"
+					isUnique = false
+					break
+				}
+			}
+			if isUnique {
+				if err := gitCli.RegisterWebhook(addr); err != nil {
+					webhookRegistered.Reason = "webhookRegisterFailed"
+					webhookRegistered.Message = err.Error()
+				} else {
+					webhookRegistered.Status = corev1.ConditionTrue
+					webhookRegistered.Reason = ""
+					webhookRegistered.Message = ""
+				}
+			}
+		}
+		webhookConditionChanged = instance.Status.Conditions.SetCondition(*webhookRegistered)
+	}
+
+	return webhookConditionChanged
+}
+
 // Set ready condition, return if it's changed or not
 func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) bool {
 	ready := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
@@ -130,8 +195,8 @@ func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) bool {
 
 	// TODO
 	// // For now, only checked is if webhook-registered is true & secrets are set
-	// webhookRegistered := instance.Status.Conditions.GetCondition(cicdv1.IntegrationConfigConditionWebhookRegistered)
-	// if instance.Status.Secrets != "" && webhookRegistered != nil && (webhookRegistered.Status == corev1.ConditionTrue || webhookRegistered.Reason == cicdv1.IntegrationConfigConditionReasonNoGitToken) {
+	// webhookRegistered := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionWebhookRegistered)
+	// if instance.Status.Secrets != "" && webhookRegistered != nil && (webhookRegistered.Status == corev1.ConditionTrue || webhookRegistered.Reason == cdv1.ApplicationConditionReasonNoGitToken) {
 	// 	ready.Status = corev1.ConditionTrue
 	// }
 	readyConditionChanged := instance.Status.Conditions.SetCondition(*ready)

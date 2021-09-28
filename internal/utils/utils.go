@@ -5,6 +5,14 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+
+	"github.com/tmax-cloud/cd-operator/pkg/git"
+	"github.com/tmax-cloud/cd-operator/pkg/git/fake"
+	"github.com/tmax-cloud/cd-operator/pkg/git/github"
+	"github.com/tmax-cloud/cd-operator/pkg/git/gitlab"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // FileExists checks if the file exists in path
@@ -16,26 +24,44 @@ func FileExists(path string) bool {
 	return !info.IsDir()
 }
 
-/*
 // GetGitCli generates git client, depending on the git type in the cfg
-func GetGitCli(cfg *cdv1.Application, cli client.Client) (git.Client, error) {
+func GetGitCli(app *cdv1.Application, cli client.Client) (git.Client, error) {
 	var c git.Client
-	switch cfg.Spec.Git.Type {
+	//TODO - Remove
+	token, err := app.GetToken(cli)
+	if err != nil {
+		return nil, err
+	}
+
+	apiurl := app.Spec.Git.GetAPIUrl()
+
+	switch app.Spec.Git.Type {
 	case cdv1.GitTypeGitHub:
-		c = &github.Client{Application: cfg, K8sClient: cli}
+		c = &github.Client{
+			GitAPIURL:        apiurl,
+			GitRepository:    app.Spec.Git.Repository,
+			GitToken:         token,
+			GitWebhookSecret: app.Status.Secrets,
+			K8sClient:        cli}
 	case cdv1.GitTypeGitLab:
-		c = &gitlab.Client{Application: cfg, K8sClient: cli}
+		c = &gitlab.Client{
+			GitAPIURL:        apiurl,
+			GitRepository:    app.Spec.Git.Repository,
+			GitToken:         token,
+			GitWebhookSecret: app.Status.Secrets,
+			K8sClient:        cli}
 	case cdv1.GitTypeFake:
-		c = &fake.Client{Application: cfg, K8sClient: cli}
+		c = &fake.Client{
+			Repository: app.Spec.Git.Repository,
+			K8sClient:  cli}
 	default:
-		return nil, fmt.Errorf("git type %s is not supported", cfg.Spec.Git.Type)
+		return nil, fmt.Errorf("git type %s is not supported", app.Spec.Git.Type)
 	}
 	if err := c.Init(); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
-*/
 
 // ParseApproversList parses user/email from line-separated and comma-separated approvers list
 func ParseApproversList(str string) ([]string, error) {

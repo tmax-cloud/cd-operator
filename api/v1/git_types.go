@@ -17,19 +17,19 @@ const (
 	GitlabDefaultHost   = "https://gitlab.com"
 )
 
-// GitConfig is a git repository where the IntegrationConfig to be configured
+// GitConfig is a git repository where the Application to be configured
 type GitConfig struct {
 	// Type for git remote server
 	// +kubebuilder:validation:Enum=github;gitlab
 	Type GitType `json:"type"`
 
-	// Repository name of git repository (in <org>/<repo> form, e.g., tmax-cloud/cicd-operator)
+	// Repository name of git repository (in <org>/<repo> form, e.g., tmax-cloud/cd-operator)
 	// +kubebuilder:validation:Pattern=.+/.+
 	Repository string `json:"repository"`
 
 	// APIUrl for api server (e.g., https://api.github.com for github type),
 	// for the case where the git repository is self-hosted (should contain specific protocol otherwise webhook server returns error)
-	// Also, it should *NOT* contain repository path (e.g., tmax-cloud/cicd-operator)
+	// Also, it should *NOT* contain repository path (e.g., tmax-cloud/cd-operator)
 	APIUrl string `json:"apiUrl,omitempty"`
 
 	// Token is a token for accessing the remote git server. It can be empty, if you don't want to register a webhook

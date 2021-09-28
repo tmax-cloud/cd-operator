@@ -29,10 +29,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Client is a gitlab client struct
+// Client is a github client struct
 type Client struct {
-	GitAPIURL     string
-	GitRepository string
+	GitAPIURL        string
+	GitRepository    string
 	GitToken         string
 	GitWebhookSecret string
 
