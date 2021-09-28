@@ -19,6 +19,9 @@ package v1
 import (
 	"github.com/operator-framework/operator-lib/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"fmt"
+	"net/url"
 )
 
 // ApplicationKind is kind string
@@ -34,12 +37,6 @@ const (
 
 // ApplicationSpec defines the desired state of Application
 type ApplicationSpec struct {
-	// Git config for target repository
-	Git          GitConfig             `json:"git"`
-	Revision     string                `json:"revision"`
-	Path         string                `json:"path"`
-	ManifestType ApplicationSourceType `json:"manifestType"`
-
 	// Source is a reference to the location of the application's manifests or chart
 	Source ApplicationSource `json:"source"`
 	// Destination is a reference to the target Kubernetes server and namespace
@@ -83,6 +80,38 @@ type ApplicationSource struct {
 	// In case of Git, this can be commit, tag, or branch. If omitted, will equal to HEAD.
 	// In case of Helm, this is a semver tag for the Chart's version.
 	TargetRevision string `json:"targetRevision,omitempty"`
+}
+
+func (source *ApplicationSource) GetRepository() string {
+	//ex) https://github.com/tmax-cloud/cd-operator.git
+	u, err := url.Parse(source.RepoURL)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(u.Path)
+	// '/tmax-cloud/cd-operator' 앞에 루트와 함께 파싱됨
+
+	return u.Path[1:]
+}
+
+func (source *ApplicationSource) GetAPIUrl() string {
+	//ex) https://github.com/tmax-cloud/cd-operator.git
+	u, err := url.Parse(source.RepoURL)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(u.Host)
+
+	if u.Host == "github.com" {
+		return GithubDefaultAPIUrl
+	} else if u.Host == "gitlab.com" {
+		return GitlabDefaultAPIUrl
+	} else {
+		// TODO - github, gitlab default가 아닌 경우
+		return ""
+	}
 }
 
 type ApplicationDestination struct {
