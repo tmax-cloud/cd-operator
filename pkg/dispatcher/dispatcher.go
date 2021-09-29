@@ -25,14 +25,14 @@ func (d Dispatcher) Handle(webhook *git.Webhook, app *cdv1.Application) error {
 	// Push일 경우
 	if webhook.EventType == git.EventTypePush && push != nil {
 		var mgr manifestmanager.ManifestManager
-		url, err := mgr.GetManifestURL(app)
+		urls, err := mgr.GetManifestURLList(app)
 		if err != nil {
 			return err
 		}
-
-		err = mgr.ApplyManifest(url)
-		if err != nil {
-			return err
+		for _, url := range urls {
+			if err = mgr.ApplyManifest(url, app); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
