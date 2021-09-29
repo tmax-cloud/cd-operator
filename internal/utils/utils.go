@@ -3,8 +3,13 @@ package utils
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
+
+	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"github.com/tmax-cloud/cd-operator/pkg/git"
+	"github.com/tmax-cloud/cd-operator/pkg/git/fake"
+	"github.com/tmax-cloud/cd-operator/pkg/git/github"
+	"github.com/tmax-cloud/cd-operator/pkg/git/gitlab"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // FileExists checks if the file exists in path
@@ -16,66 +21,45 @@ func FileExists(path string) bool {
 	return !info.IsDir()
 }
 
-/*
-// GetGitCli generates git client, depending on the git type in the cfg
-func GetGitCli(cfg *cdv1.Application, cli client.Client) (git.Client, error) {
+// GetGitCli generates git client, depending on the git type in the app
+func GetGitCli(app *cdv1.Application, cli client.Client) (git.Client, error) {
+	// TODO : Refactoring
 	var c git.Client
-	switch cfg.Spec.Git.Type {
+
+	gitType := app.Spec.Source.GetGitType()
+	apiurl := app.Spec.Source.GetAPIUrl()
+	gitRepo := app.Spec.Source.GetRepository()
+	gitToken := ""
+	/* TODO : Webhook 등록하는 로직 구현 되면, 살릴 예정
+	gitToken, err := app.GetToken(cli)
+	if err != nil {
+		return nil, err
+	}
+	*/
+	// webhook parsing 할 때, validating 시 사용
+	webhookSecret := app.Status.Secrets
+	switch gitType {
 	case cdv1.GitTypeGitHub:
-		c = &github.Client{Application: cfg, K8sClient: cli}
+		c = &github.Client{
+			GitAPIURL:        apiurl,
+			GitRepository:    gitRepo,
+			GitToken:         gitToken,
+			GitWebhookSecret: webhookSecret,
+			K8sClient:        cli}
 	case cdv1.GitTypeGitLab:
-		c = &gitlab.Client{Application: cfg, K8sClient: cli}
+		c = &gitlab.Client{
+			GitAPIURL:        apiurl,
+			GitRepository:    gitRepo,
+			GitToken:         gitToken,
+			GitWebhookSecret: webhookSecret,
+			K8sClient:        cli}
 	case cdv1.GitTypeFake:
-		c = &fake.Client{Application: cfg, K8sClient: cli}
+		c = &fake.Client{Repository: gitRepo, K8sClient: cli}
 	default:
-		return nil, fmt.Errorf("git type %s is not supported", cfg.Spec.Git.Type)
+		return nil, fmt.Errorf("git type %s is not supported", gitType)
 	}
 	if err := c.Init(); err != nil {
 		return nil, err
 	}
 	return c, nil
-}
-*/
-
-// ParseApproversList parses user/email from line-separated and comma-separated approvers list
-func ParseApproversList(str string) ([]string, error) {
-	var approvers []string
-
-	// Regexp for verifying if it's in form
-	re := regexp.MustCompile("[^=]+(=.+)?")
-
-	lineSep := strings.Split(strings.TrimSpace(str), "\n")
-	for _, line := range lineSep {
-		commaSep := strings.Split(strings.TrimSpace(line), ",")
-		for _, approver := range commaSep {
-			trimmed := strings.TrimSpace(approver)
-			if re.MatchString(trimmed) {
-				approvers = append(approvers, trimmed)
-			} else {
-				return nil, fmt.Errorf("comma-separated approver %s is not in form of <user-name>[=<email>](optional)", approver)
-			}
-		}
-	}
-
-	return approvers, nil
-}
-
-// ParseEmailFromUsers parses email from approvers list
-func ParseEmailFromUsers(users []string) []string {
-	var emails []string
-
-	emailRe := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
-
-	for _, u := range users {
-		subs := strings.Split(u, "=")
-		if len(subs) < 2 {
-			continue
-		}
-		trimmed := strings.TrimSpace(subs[1])
-		if emailRe.MatchString(trimmed) {
-			emails = append(emails, trimmed)
-		}
-	}
-
-	return emails
 }

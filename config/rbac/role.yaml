@@ -7,6 +7,19 @@ metadata:
   name: cd-manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - cd.tmax.io
   resources:
   - applications
