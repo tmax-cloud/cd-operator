@@ -7,9 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
-	"github.com/tmax-cloud/cd-operator/internal/utils"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,26 +28,26 @@ type Server interface {
 }
 
 // server is a HTTP server for git webhook API and report page
-type server struct {
+type HTTPServer struct {
 	k8sClient client.Client
 	router    *mux.Router
 }
 
 // New is a constructor of a server
-func New(c client.Client, cfg *rest.Config) *server {
+func New(c client.Client, cfg *rest.Config) *HTTPServer {
 	r := mux.NewRouter()
 
 	// Add webhook handler
 	r.Methods(http.MethodPost).Subrouter().Handle(webhookPath, &webhookHandler{k8sClient: c})
 
-	return &server{
+	return &HTTPServer{
 		k8sClient: c,
 		router:    r,
 	}
 }
 
 // Start starts the server
-func (s *server) Start() {
+func (s *HTTPServer) Start() {
 	httpAddr := fmt.Sprintf("0.0.0.0:%d", port)
 
 	logger.Info(fmt.Sprintf("Server is running on %s", httpAddr))
@@ -59,7 +57,7 @@ func (s *server) Start() {
 	}
 }
 
-func logAndRespond(w http.ResponseWriter, log logr.Logger, code int, respMsg, logMsg string) {
-	_ = utils.RespondError(w, code, respMsg)
-	log.Info(logMsg)
-}
+// func logAndRespond(w http.ResponseWriter, log logr.Logger, code int, respMsg, logMsg string) {
+// 	_ = utils.RespondError(w, code, respMsg)
+// 	log.Info(logMsg)
+// }

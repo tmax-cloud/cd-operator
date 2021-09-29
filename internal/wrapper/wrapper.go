@@ -10,7 +10,7 @@ import (
 
 // RouterWrapper is an interface for wrapper
 type RouterWrapper interface {
-	Add(child *wrapper) error
+	Add(child *Wrapper) error
 	FullPath() string
 
 	Router() *mux.Router
@@ -21,8 +21,8 @@ type RouterWrapper interface {
 	Handler() http.HandlerFunc
 }
 
-// wrapper wraps router with tree structure
-type wrapper struct {
+// Wrapper wraps router with tree structure
+type Wrapper struct {
 	router *mux.Router
 
 	subPath string
@@ -34,8 +34,8 @@ type wrapper struct {
 }
 
 // New is a constructor for the wrapper
-func New(path string, methods []string, handler http.HandlerFunc) *wrapper {
-	return &wrapper{
+func New(path string, methods []string, handler http.HandlerFunc) *Wrapper {
+	return &Wrapper{
 		subPath: path,
 		methods: methods,
 		handler: handler,
@@ -43,26 +43,26 @@ func New(path string, methods []string, handler http.HandlerFunc) *wrapper {
 }
 
 // Router returns its router
-func (w *wrapper) Router() *mux.Router {
+func (w *Wrapper) Router() *mux.Router {
 	return w.router
 }
 
 // SetRouter sets its router
-func (w *wrapper) SetRouter(r *mux.Router) {
+func (w *Wrapper) SetRouter(r *mux.Router) {
 	w.router = r
 }
 
 // Children returns its children
-func (w *wrapper) Children() []RouterWrapper {
+func (w *Wrapper) Children() []RouterWrapper {
 	return w.children
 }
 
-func (w *wrapper) Handler() http.HandlerFunc {
+func (w *Wrapper) Handler() http.HandlerFunc {
 	return w.handler
 }
 
 // Add adds child as a child (child node of a tree) of w
-func (w *wrapper) Add(child *wrapper) error {
+func (w *Wrapper) Add(child *Wrapper) error {
 	if child == nil {
 		return fmt.Errorf("child is nil")
 	}
@@ -94,7 +94,7 @@ func (w *wrapper) Add(child *wrapper) error {
 }
 
 // FullPath builds full path string of the api
-func (w *wrapper) FullPath() string {
+func (w *Wrapper) FullPath() string {
 	if w.parent == nil {
 		return w.subPath
 	}

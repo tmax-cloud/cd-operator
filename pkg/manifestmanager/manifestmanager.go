@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,17 +24,17 @@ type ManifestManager struct {
 }
 
 type DownloadURL struct {
-	Download_URL string `json:"download_url"`
+	DownloadURL string `json:"download_url"`
 }
 
 // GetManifestURL gets a url of manifest file
 func (m *ManifestManager) GetManifestURL(app *cdv1.Application) (string, error) {
-	apiUrl := app.Spec.Source.GetAPIUrl()
+	apiURL := app.Spec.Source.GetAPIUrl()
 	repo := app.Spec.Source.GetRepository()
 	revision := app.Spec.Source.TargetRevision // branch, tag, sha..
 	path := app.Spec.Source.Path
 
-	apiURL := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", apiUrl, repo, path, revision)
+	apiURL = fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", apiURL, repo, path, revision)
 
 	// Get download_url of manifest file
 	resp, err := http.Get(apiURL)
@@ -48,16 +49,16 @@ func (m *ManifestManager) GetManifestURL(app *cdv1.Application) (string, error) 
 		return "", err
 	}
 
-	var downloadUrl DownloadURL
-	if err := json.Unmarshal(body, &downloadUrl); err != nil {
+	var downloadURL DownloadURL
+	if err := json.Unmarshal(body, &downloadURL); err != nil {
 		log.Error(err, "Unmarshal failed..")
 		return "", err
 	}
 
-	return downloadUrl.Download_URL, nil
+	return downloadURL.DownloadURL, nil
 }
 
-func (m *ManifestManager) ApplyManifest(url string) error {
+func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Error(err, "http Get failed..")
@@ -107,6 +108,10 @@ func (m *ManifestManager) ApplyManifest(url string) error {
 		// return err
 	}
 
+	if err := createResource(unstObj, app, c); err != nil {
+		panic(err)
+	}
+
 	return nil
 }
 
@@ -123,4 +128,27 @@ func BytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 	}
 
 	return &unstructured.Unstructured{Object: unstrObj}, nil
+}
+
+func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c client.Client) error {
+	obj := &cdv1.DeployResource{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName(),
+			Namespace: app.Name,
+		},
+		Application: app.Namespace,
+		Spec: cdv1.DeployResourceSpec{
+			Name:      unstObj.GetName(),
+			Kind:      unstObj.GetKind(),
+			Namespace: unstObj.GetNamespace(),
+		},
+	}
+
+	if err := c.Create(context.Background(), obj); err != nil {
+		log.Info("err")
+		panic(err)
+	}
+	log.Info("err")
+
+	return nil
 }

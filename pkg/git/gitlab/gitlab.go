@@ -30,8 +30,8 @@ import (
 
 // Client is a gitlab client struct
 type Client struct {
-	GitAPIURL     string
-	GitRepository string
+	GitAPIURL        string
+	GitRepository    string
 	GitToken         string
 	GitWebhookSecret string
 
@@ -258,10 +258,10 @@ func (c *Client) RegisterComment(issueType git.IssueType, issueNo int, body stri
 		return fmt.Errorf("issue type %s is not supported", issueType)
 	}
 
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%s/%s/%d/notes", c.GitAPIURL, url.QueryEscape(c.GitRepository), t, issueNo)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/%s/%d/notes", c.GitAPIURL, url.QueryEscape(c.GitRepository), t, issueNo)
 
 	commentBody := &CommentBody{Body: body}
-	if _, _, err := c.requestHTTP(http.MethodPost, apiUrl, commentBody); err != nil {
+	if _, _, err := c.requestHTTP(http.MethodPost, apiURL, commentBody); err != nil {
 		return err
 	}
 	return nil
@@ -442,9 +442,9 @@ func (c *Client) SetLabel(issueType git.IssueType, id int, label string) error {
 		return fmt.Errorf("issue type %s is not supported", issueType)
 	}
 
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%s/%s/%d", c.GitAPIURL, url.QueryEscape(c.GitRepository), t, id)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/%s/%d", c.GitAPIURL, url.QueryEscape(c.GitRepository), t, id)
 
-	if _, _, err := c.requestHTTP(http.MethodPut, apiUrl, UpdateMergeRequest{AddLabels: label}); err != nil {
+	if _, _, err := c.requestHTTP(http.MethodPut, apiURL, UpdateMergeRequest{AddLabels: label}); err != nil {
 		return err
 	}
 
@@ -463,9 +463,9 @@ func (c *Client) DeleteLabel(issueType git.IssueType, id int, label string) erro
 		return fmt.Errorf("issue type %s is not supported", issueType)
 	}
 
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%s/%s/%d", c.GitAPIURL, url.QueryEscape(c.GitRepository), t, id)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/%s/%d", c.GitAPIURL, url.QueryEscape(c.GitRepository), t, id)
 
-	if _, _, err := c.requestHTTP(http.MethodPut, apiUrl, UpdateMergeRequest{RemoveLabels: label}); err != nil {
+	if _, _, err := c.requestHTTP(http.MethodPut, apiURL, UpdateMergeRequest{RemoveLabels: label}); err != nil {
 		return err
 	}
 	return nil

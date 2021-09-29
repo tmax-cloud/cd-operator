@@ -9,7 +9,6 @@ require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
 	github.com/go-logr/logr v0.3.0
 	github.com/go-logr/zapr v0.1.1 // indirect
-	github.com/google/go-cmp v0.5.2 // indirect
 	github.com/gorilla/mux v1.8.0
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -20,6 +19,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.6.0 // indirect
 	github.com/prometheus/common v0.9.1
+	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/sourcegraph/go-diff v0.6.1
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.15.0 // indirect
