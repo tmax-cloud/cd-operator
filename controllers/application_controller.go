@@ -40,6 +40,7 @@ type ApplicationReconciler struct {
 
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=secrets;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile reconciles Application
 func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {

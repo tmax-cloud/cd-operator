@@ -4,44 +4,42 @@ import (
 	"testing"
 
 	"github.com/bmizerany/assert"
+	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestParseApproversList(t *testing.T) {
-	// Success test
-	str := `admin@tmax.co.kr=admin@tmax.co.kr,test@tmax.co.kr
-test2@tmax.co.kr=test2@tmax.co.kr`
-	list, err := ParseApproversList(str)
-	if err != nil {
-		t.Fatal(err)
+func TestGetGitCli(t *testing.T) {
+	s := runtime.NewScheme()
+	utilruntime.Must(cdv1.AddToScheme(s))
+
+	app := &cdv1.Application{}
+	app.Spec = cdv1.ApplicationSpec{
+		Source: cdv1.ApplicationSource{
+			RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
+			Path:           "guestbook/guestbook-ui-svc.yaml",
+			TargetRevision: "main",
+		},
 	}
-	assert.Equal(t, 3, len(list), "list is not parsed well")
-	assert.Equal(t, "admin@tmax.co.kr=admin@tmax.co.kr", list[0], "list is not parsed well")
-	assert.Equal(t, "test@tmax.co.kr", list[1], "list is not parsed well")
-	assert.Equal(t, "test2@tmax.co.kr=test2@tmax.co.kr", list[2], "list is not parsed well")
+	app.Status.Secrets = "kkkkkkkkkkkkkkkkkkkkkkkk"
 
-	// Fail test
-	str = "admin,,ttt"
-	list, err = ParseApproversList(str)
-	if err == nil {
-		for i, l := range list {
-			t.Logf("%d : %s", i, l)
-		}
-		t.Fatal("error not occur")
-	}
-}
+	fakeCli := fake.NewFakeClientWithScheme(s, app)
 
-func TestParseEmailFromUsers(t *testing.T) {
-	// Include test
-	users := []string{
-		"aweilfjlwesfj",
-		"aweilfjlwesfj=aweiojweio",
-		"aweilfjlwesfj=admin@tmax.co.kr",
-		"asdij@oisdjf.sdfioj=test@tmax.co.kr",
-	}
+	/* result*/
+	_, err := GetGitCli(app, fakeCli)
 
-	tos := ParseEmailFromUsers(users)
+	assert.Equal(t, err, nil)
+	// TODO
+	// - git.Client 인터페이스에 해당 필드들이 없어서 각각의 필드 개별 비교 못함
+	// 방법 생각해 볼 것
 
-	assert.Equal(t, 2, len(tos), "list is not parsed well")
-	assert.Equal(t, "admin@tmax.co.kr", tos[0], "list is not parsed well")
-	assert.Equal(t, "test@tmax.co.kr", tos[1], "list is not parsed well")
+	/*
+		assert.Equal(t, result, github.Client{
+			GitAPIURL:        cdv1.GithubDefaultAPIUrl,
+			GitRepository:    "tmax-cloud/cd-example-apps",
+			GitToken:         "",
+			GitWebhookSecret: "kkkkkkkkkkkkkkkkkkkkkkkk",
+			K8sClient:        fakeCli})
+	*/
 }

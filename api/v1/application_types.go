@@ -114,6 +114,25 @@ func (source *ApplicationSource) GetAPIUrl() string {
 	}
 }
 
+func (source *ApplicationSource) GetGitType() GitType {
+	//ex) https://github.com/tmax-cloud/cd-operator.git
+	u, err := url.Parse(source.RepoURL)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(u.Host)
+
+	if u.Host == "github.com" {
+		return GitTypeGitHub
+	} else if u.Host == "gitlab.com" {
+		return GitTypeGitLab
+	} else {
+		// TODO - github, gitlab default가 아닌 경우
+		return GitTypeFake
+	}
+}
+
 type ApplicationDestination struct {
 	// Server specifies the URL of the target cluster and must be set to the Kubernetes control plane API
 	Server string `json:"server,omitempty"`
@@ -140,3 +159,36 @@ const (
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})
 }
+
+/* TODO
+// GetToken fetches git access token from Application
+func (app *Application) GetToken(c client.Client) (string, error) {
+	tokenStruct := app.Spec.Git.Token
+
+	// Empty token
+	if tokenStruct == nil {
+		return "", nil
+	}
+
+	// Get from value
+	if tokenStruct.ValueFrom == nil {
+		if tokenStruct.Value != "" {
+			return tokenStruct.Value, nil
+		}
+		return "", fmt.Errorf("token is empty")
+	}
+
+	// Get from secret
+	secretName := tokenStruct.ValueFrom.SecretKeyRef.Name
+	secretKey := tokenStruct.ValueFrom.SecretKeyRef.Key
+	secret := &corev1.Secret{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: secretName, Namespace: app.Namespace}, secret); err != nil {
+		return "", err
+	}
+	token, ok := secret.Data[secretKey]
+	if !ok {
+		return "", fmt.Errorf("token secret/key %s/%s not valid", secretName, secretKey)
+	}
+	return string(token), nil
+}
+*/
