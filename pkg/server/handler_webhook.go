@@ -64,9 +64,6 @@ func (h *webhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//comment(jh) : wh으로
-	fmt.Println(wh)
-
 	if wh == nil {
 		return
 	}

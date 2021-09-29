@@ -20,6 +20,10 @@ import (
 	"flag"
 	"os"
 
+	"github.com/tmax-cloud/cd-operator/pkg/dispatcher"
+	"github.com/tmax-cloud/cd-operator/pkg/git"
+	"github.com/tmax-cloud/cd-operator/pkg/server"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -96,6 +100,12 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+
+	// Create and start webhook server
+	srv := server.New(mgr.GetClient(), mgr.GetConfig())
+	// Add plugins for webhook
+	server.AddPlugin([]git.EventType{git.EventTypePullRequest, git.EventTypePush}, &dispatcher.Dispatcher{Client: mgr.GetClient()})
+	go srv.Start()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

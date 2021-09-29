@@ -83,20 +83,15 @@ type ApplicationSource struct {
 }
 
 func (source *ApplicationSource) GetRepository() string {
-	//ex) https://github.com/tmax-cloud/cd-operator.git
 	u, err := url.Parse(source.RepoURL)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(u.Path)
-	// '/tmax-cloud/cd-operator' 앞에 루트와 함께 파싱됨
-
 	return u.Path[1:]
 }
 
 func (source *ApplicationSource) GetAPIUrl() string {
-	//ex) https://github.com/tmax-cloud/cd-operator.git
 	u, err := url.Parse(source.RepoURL)
 	if err != nil {
 		panic(err)
@@ -109,13 +104,12 @@ func (source *ApplicationSource) GetAPIUrl() string {
 	} else if u.Host == "gitlab.com" {
 		return GitlabDefaultAPIUrl
 	} else {
-		// TODO - github, gitlab default가 아닌 경우
+		// TODO - github, gitlab가 아닌 경우
 		return ""
 	}
 }
 
 func (source *ApplicationSource) GetGitType() GitType {
-	//ex) https://github.com/tmax-cloud/cd-operator.git
 	u, err := url.Parse(source.RepoURL)
 	if err != nil {
 		panic(err)
@@ -159,36 +153,3 @@ const (
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})
 }
-
-/* TODO
-// GetToken fetches git access token from Application
-func (app *Application) GetToken(c client.Client) (string, error) {
-	tokenStruct := app.Spec.Git.Token
-
-	// Empty token
-	if tokenStruct == nil {
-		return "", nil
-	}
-
-	// Get from value
-	if tokenStruct.ValueFrom == nil {
-		if tokenStruct.Value != "" {
-			return tokenStruct.Value, nil
-		}
-		return "", fmt.Errorf("token is empty")
-	}
-
-	// Get from secret
-	secretName := tokenStruct.ValueFrom.SecretKeyRef.Name
-	secretKey := tokenStruct.ValueFrom.SecretKeyRef.Key
-	secret := &corev1.Secret{}
-	if err := c.Get(context.Background(), types.NamespacedName{Name: secretName, Namespace: app.Namespace}, secret); err != nil {
-		return "", err
-	}
-	token, ok := secret.Data[secretKey]
-	if !ok {
-		return "", fmt.Errorf("token secret/key %s/%s not valid", secretName, secretKey)
-	}
-	return string(token), nil
-}
-*/
