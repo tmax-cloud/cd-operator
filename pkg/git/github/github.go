@@ -31,8 +31,8 @@ import (
 
 // Client is a gitlab client struct
 type Client struct {
-	GitAPIURL     string
-	GitRepository string
+	GitAPIURL        string
+	GitRepository    string
 	GitToken         string
 	GitWebhookSecret string
 
@@ -228,10 +228,10 @@ func (c *Client) CanUserWriteToRepo(user git.User) (bool, error) {
 
 // RegisterComment registers comment to an issue
 func (c *Client) RegisterComment(_ git.IssueType, issueNo int, body string) error {
-	apiUrl := fmt.Sprintf("%s/repos/%s/issues/%d/comments", c.GitAPIURL, c.GitRepository, issueNo)
+	apiURL := fmt.Sprintf("%s/repos/%s/issues/%d/comments", c.GitAPIURL, c.GitRepository, issueNo)
 
 	commentBody := &CommentBody{Body: body}
-	if _, _, err := c.requestHTTP(http.MethodPost, apiUrl, commentBody); err != nil {
+	if _, _, err := c.requestHTTP(http.MethodPost, apiURL, commentBody); err != nil {
 		return err
 	}
 	return nil
