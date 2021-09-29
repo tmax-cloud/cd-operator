@@ -31,8 +31,8 @@ import (
 
 // Client is a gitlab client struct
 type Client struct {
-	GitAPIURL     string
-	GitRepository string
+	GitAPIURL        string
+	GitRepository    string
 	GitToken         string
 	GitWebhookSecret string
 
