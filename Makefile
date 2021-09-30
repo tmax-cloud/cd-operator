@@ -1,5 +1,6 @@
-VERSION ?= v0.0.0 
-REGISTRY ?= tmaxcloudck 
+# Current Operator version
+VERSION ?= v0.0.1 
+REGISTRY ?= tmaxcloudck
 
 # Image URL to use all building/pushing image targets
 IMG_CONTROLLER ?= $(REGISTRY)/cd-operator:$(VERSION)
