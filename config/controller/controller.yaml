@@ -39,7 +39,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8888
+            port: 8081
             scheme: HTTP
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -47,7 +47,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 8888
+            port: 8081
             scheme: HTTP
           initialDelaySeconds: 5
           periodSeconds: 10

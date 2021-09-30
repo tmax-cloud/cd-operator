@@ -5,7 +5,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cd-manager-role
+  name: cluster-admin # 권한 문제 때문에 임시 처리. 보안상 꼭 바뀌어야 함
 subjects:
 - kind: ServiceAccount
   name: default
