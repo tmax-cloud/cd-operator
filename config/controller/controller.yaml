@@ -26,7 +26,7 @@ spec:
       containers:
       - command:
         - /controller
-        image: tmaxcloudck/cd-operator:lastest
+        image: tmaxcloudck/cd-operator:latest
         imagePullPolicy: Always
         name: manager
         resources:
