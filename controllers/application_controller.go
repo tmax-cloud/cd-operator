@@ -92,13 +92,13 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	secretChanged := r.setSecretString(instance) // for WebhookSecret
 
 	// Set webhook registered
-	// webhookConditionChanged := r.setWebhookRegisteredCond(instance)
+	webhookConditionChanged := r.setWebhookRegisteredCond(instance)
 
 	// Set ready
 	readyConditionChanged := r.setReadyCond(instance)
 
 	// If conditions changed, update status
-	if secretChanged || /*webhookConditionChanged ||*/ readyConditionChanged {
+	if secretChanged || webhookConditionChanged || readyConditionChanged {
 		p := client.MergeFrom(original)
 		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
 			log.Error(err, "")
@@ -146,4 +146,67 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cdv1.Application{}).
 		Complete(r)
+}
+
+// Set webhook-registered condition, return if it's changed or not
+func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Application) bool {
+	webhookRegistered := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionWebhookRegistered)
+	if webhookRegistered == nil {
+		webhookRegistered = &status.Condition{
+			Type:   cdv1.ApplicationConditionWebhookRegistered,
+			Status: corev1.ConditionFalse,
+		}
+	}
+
+	// If token is empty, skip to register
+	if instance.Spec.Source.Token == nil {
+		webhookRegistered.Reason = cdv1.ApplicationConditionReasonNoGitToken
+		webhookRegistered.Message = "Skipped to register webhook"
+		webhookRegisteredCondChanged := instance.Status.Conditions.SetCondition(*webhookRegistered)
+		return webhookRegisteredCondChanged
+	}
+
+	// Register only if the condition is false
+	if webhookRegistered.IsFalse() {
+		webhookRegistered.Status = corev1.ConditionFalse
+		webhookRegistered.Reason = ""
+		webhookRegistered.Message = ""
+
+		gitCli, err := utils.GetGitCli(instance, r.Client)
+		if err != nil {
+			webhookRegistered.Reason = "gitCliErr"
+			webhookRegistered.Message = err.Error()
+		} else {
+			addr := instance.GetWebhookServerAddress(r.Client)
+			isUnique := true
+			r.Log.Info("Registering webhook " + addr)
+			entries, err := gitCli.ListWebhook()
+			if err != nil {
+				webhookRegistered.Reason = "webhookRegisterFailed"
+				webhookRegistered.Message = err.Error()
+			}
+			for _, e := range entries {
+				if addr == e.URL {
+					webhookRegistered.Reason = "webhookRegisterFailed"
+					webhookRegistered.Message = "same webhook has already registered"
+					isUnique = false
+					break
+				}
+			}
+			if isUnique {
+				if err := gitCli.RegisterWebhook(addr); err != nil {
+					webhookRegistered.Reason = "webhookRegisterFailed"
+					webhookRegistered.Message = err.Error()
+				} else {
+					webhookRegistered.Status = corev1.ConditionTrue
+					webhookRegistered.Reason = ""
+					webhookRegistered.Message = ""
+				}
+			}
+		}
+		webhookRegisteredCondChanged := instance.Status.Conditions.SetCondition(*webhookRegistered)
+		return webhookRegisteredCondChanged
+	}
+	webhookRegisteredCondChanged := instance.Status.Conditions.SetCondition(*webhookRegistered)
+	return webhookRegisteredCondChanged
 }
