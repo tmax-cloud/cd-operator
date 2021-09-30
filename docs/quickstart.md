@@ -16,7 +16,7 @@ metadata:
 spec:
   source:
     repoURL: https://github.com/tmax-cloud/cd-example-apps
-	path: guestbook
+    path: guestbook
     targetRevision: main
   destination:
     server:
