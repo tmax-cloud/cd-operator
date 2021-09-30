@@ -1,0 +1,103 @@
+apiVersion: cicd.tmax.io/v1
+kind: IntegrationConfig
+metadata:
+  name: cd-operator
+  namespace: cicd
+spec:
+  git:
+    repository: tmax-cloud/cd-operator
+    token:
+      valueFrom:
+        secretKeyRef:
+          key: token
+          name: tmax-cloud-bot-token
+    type: github
+  jobs:
+    preSubmit:
+      - image: golang:1.14
+        name: test-code
+        script: |
+          make test
+        when:
+          branch:
+            - main
+      - image: golangci/golangci-lint:v1.32
+        name: test-lint
+        script: |
+          golangci-lint run ./... -v -E gofmt -E golint -E gocyclo -E misspell --timeout 1h0m0s
+        when:
+          branch:
+            - main
+    postSubmit:
+    - image: golang:1.14
+      name: test-code
+      script: |
+        make test
+      when:
+        branch:
+        - main
+    - image: golangci/golangci-lint:v1.32
+      name: test-lint
+      script: |
+        golangci-lint run ./... -v -E gofmt --timeout 1h0m0s
+      when:
+        branch:
+        - main
+    - env:
+      - name: IMAGE_URL_OPERATOR
+        value: tmaxcloudck/cd-operator
+      image: quay.io/buildah/stable
+      name: build-push-image
+      script: |
+        TAG=${CI_HEAD_REF#refs/tags/}
+
+        IMG_OPERATOR="$IMAGE_URL_OPERATOR:$TAG"
+
+        buildah bud --format docker --storage-driver=vfs -f ./build/controller/Dockerfile -t $IMG_OPERATOR .
+        buildah tag --storage-driver=vfs $IMG_OPERATOR $IMAGE_URL_OPERATOR:latest
+        buildah push --storage-driver=vfs $IMG_OPERATOR docker://$IMG_OPERATOR
+        buildah push --storage-driver=vfs $IMAGE_URL_OPERATOR:latest docker://$IMAGE_URL_OPERATOR:latest
+      securityContext:
+        privileged: true
+      notification:
+        onSuccess:
+          email:
+            content: |
+              <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+              <html xmlns="http://www.w3.org/1999/xhtml">
+               <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+                <title>CD Operator {{ .Spec.Refs.Base.Ref.GetTag }} 배포 안내 메일</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+              </head>
+              <body>
+                <div style="font-size: 10pt; font-family: Verdana,Geneva,sans-serif">
+                  <div>안녕하세요, CK1-2팀 양정현입니다.<br>HyperCloud CD Operator {{ .Spec.Refs.Base.Ref.GetTag }} 배포 안내 메일입니다.</div>
+                  <div>
+                    <ul>
+                      <li>이미지: docker.io/tmaxcloudck/cd-operator:{{ .Spec.Refs.Base.Ref.GetTag }}</li>
+                    </ul>
+                  </div>
+                  <div>수정 사항은 릴리즈 노트 <a href="{{ .Spec.Refs.Link }}/releases/tag/{{ .Spec.Refs.Base.Ref.GetTag }}" target="_blank">{{ .Spec.Refs.Link }}/releases/tag/{{ .Spec.Refs.Base.Ref.GetTag }}</a> 참조 부탁드립니다.<br><br>감사합니다.</div>
+                </div>
+              </body>
+              </html>
+            isHtml: true
+            receivers:
+              - ck1_2@tmax.co.kr
+              - cqa1@tmax.co.kr
+            title: CD Operator {{ .Spec.Refs.Base.Ref.GetTag }} 배포 안내 메일
+      when:
+        tag:
+        - v.*
+  mergeConfig:
+    method: squash
+    query:
+      approveRequired: true
+      blockLabels:
+      - hold
+      checks:
+      - test-code
+      - test-lint
+  secrets:
+  - name: tmax-hub
