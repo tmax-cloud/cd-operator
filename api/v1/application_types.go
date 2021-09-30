@@ -17,8 +17,13 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	"github.com/operator-framework/operator-lib/status"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"fmt"
 	"net/url"
@@ -33,6 +38,11 @@ const (
 const (
 	ApplicationConditionReady             = status.ConditionType("ready")
 	ApplicationConditionWebhookRegistered = status.ConditionType("webhook-registered")
+)
+
+// ApplicationConditionReasonNoGitToken is a Reason key
+const (
+	ApplicationConditionReasonNoGitToken = "noGitToken"
 )
 
 // ApplicationSpec defines the desired state of Application
@@ -80,6 +90,9 @@ type ApplicationSource struct {
 	// In case of Git, this can be commit, tag, or branch. If omitted, will equal to HEAD.
 	// In case of Helm, this is a semver tag for the Chart's version.
 	TargetRevision string `json:"targetRevision,omitempty"`
+	// Token is a token for accessing the remote git server. It can be empty, if you don't want to register a webhook
+	// to the git server
+	Token *GitToken `json:"token,omitempty"`
 }
 
 func (source *ApplicationSource) GetRepository() string {
@@ -150,6 +163,53 @@ const (
 	ApplicationSourceTypePlugin    ApplicationSourceType = "Plugin"
 )
 
+const (
+	ConfigMapNameCDConfig      = "cd-config"
+	ConfigMapNamespaceCDSystem = "cd-system"
+)
+
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})
+}
+
+// GetToken fetches git access token from IntegrationConfig
+func (app *Application) GetToken(c client.Client) (string, error) {
+	tokenStruct := app.Spec.Source.Token
+
+	// Empty token
+	if tokenStruct == nil {
+		return "", nil
+	}
+
+	// Get from value
+	if tokenStruct.ValueFrom == nil {
+		if tokenStruct.Value != "" {
+			return tokenStruct.Value, nil
+		}
+		return "", fmt.Errorf("token is empty")
+	}
+
+	// Get from secret
+	secretName := tokenStruct.ValueFrom.SecretKeyRef.Name
+	secretKey := tokenStruct.ValueFrom.SecretKeyRef.Key
+	secret := &corev1.Secret{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: secretName, Namespace: app.Namespace}, secret); err != nil {
+		return "", err
+	}
+	token, ok := secret.Data[secretKey]
+	if !ok {
+		return "", fmt.Errorf("token secret/key %s/%s not valid", secretName, secretKey)
+	}
+	return string(token), nil
+}
+
+// GetWebhookServerAddress returns Server address which webhook events will be received
+// TODO: modify to use config controller & expose controller
+func (app *Application) GetWebhookServerAddress(c client.Client) string {
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: ConfigMapNameCDConfig, Namespace: ConfigMapNamespaceCDSystem}, cm); err != nil {
+		return ""
+	}
+	currentExternalHostName := cm.Data["externalHostName"]
+	return fmt.Sprintf("http://%s/webhook/%s/%s", currentExternalHostName, app.Namespace, app.Name)
 }

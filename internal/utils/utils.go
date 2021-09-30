@@ -29,13 +29,10 @@ func GetGitCli(app *cdv1.Application, cli client.Client) (git.Client, error) {
 	gitType := app.Spec.Source.GetGitType()
 	apiurl := app.Spec.Source.GetAPIUrl()
 	gitRepo := app.Spec.Source.GetRepository()
-	gitToken := ""
-	/* TODO : Webhook 등록하는 로직 구현 되면, 살릴 예정
 	gitToken, err := app.GetToken(cli)
 	if err != nil {
 		return nil, err
 	}
-	*/
 	// webhook parsing 할 때, validating 시 사용
 	webhookSecret := app.Status.Secrets
 	switch gitType {

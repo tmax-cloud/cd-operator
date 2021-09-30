@@ -72,6 +72,41 @@ spec:
                       tag, or branch. If omitted, will equal to HEAD. In case of Helm,
                       this is a semver tag for the Chart's version.
                     type: string
+                  token:
+                    description: Token is a token for accessing the remote git server.
+                      It can be empty, if you don't want to register a webhook to
+                      the git server
+                    properties:
+                      value:
+                        description: Value is un-encrypted plain string of git token,
+                          not recommended
+                        type: string
+                      valueFrom:
+                        description: ValueFrom refers secret. Recommended
+                        properties:
+                          secretKeyRef:
+                            description: SecretKeySelector selects a key of a Secret.
+                            properties:
+                              key:
+                                description: The key of the secret to select from.  Must
+                                  be a valid secret key.
+                                type: string
+                              name:
+                                description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  TODO: Add other useful fields. apiVersion, kind,
+                                  uid?'
+                                type: string
+                              optional:
+                                description: Specify whether the Secret or its key
+                                  must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        required:
+                        - secretKeyRef
+                        type: object
+                    type: object
                 required:
                 - repoURL
                 type: object
