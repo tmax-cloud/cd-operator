@@ -78,26 +78,53 @@ func TestGetManifestURL(t *testing.T) {
 	}
 }
 
-// func TestApplyManifest(t *testing.T) {
-// 	// Set loggers
-// 	if os.Getenv("CD") != "true" {
-// 		logrus.SetLevel(logrus.InfoLevel)
-// 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
-// 	}
+/* TODO : TestServer 적용 완료. Scheme 에러 수정한 커밋 반영 후 주석 해제 할 것
+func TestApplyManifest(t *testing.T) {
+	// Set loggers
+	if os.Getenv("CD") != "true" {
+		logrus.SetLevel(logrus.InfoLevel)
+		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	}
 
-// 	var m ManifestManager
-// 	url := "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"
+	var m ManifestManager
+	server := newTestServer()
+	app := &cdv1.Application{
+		Spec: cdv1.ApplicationSpec{
+			Source: cdv1.ApplicationSource{
+				RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
+				Path:           "guestbook/guestbook-ui-svc.yaml",
+				TargetRevision: "main",
+			},
+		},
+	}
 
-// 	app := &cdv1.Application{
-// 		Spec: cdv1.ApplicationSpec{
-// 			Source: cdv1.ApplicationSource{
-// 				RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
-// 				Path:           "guestbook/guestbook-ui-svc.yaml", // 아직 single yaml만 가능
-// 				TargetRevision: "main",
-// 			},
-// 		},
-// 	}
+	err := m.ApplyManifest(server.URL, app)
+	assert.Equal(t, err, nil)
+}
 
-// 	err := m.ApplyManifest(url, app)
-// 	assert.Equal(t, err, nil)
-// }
+func newTestServer() *httptest.Server {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		defer func() {
+			_ = req.Body.Close()
+		}()
+		// yaml은 tab 말고 space로만 구문 가능
+		data := `apiVersion: v1
+kind: Service
+metadata:
+  name: guestbook-ui
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: guestbook-ui
+
+`
+		io.WriteString(w, data)
+	})
+
+	return httptest.NewServer(router)
+}
+*/

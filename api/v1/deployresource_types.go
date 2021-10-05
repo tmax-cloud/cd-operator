@@ -24,7 +24,7 @@ type DeployResourceSpec struct {
 
 // +kubebuilder:object:root=true
 
-// DeployResource is resource created by an argocd application
+// DeployResource is resource created by an application
 // +kubebuilder:resource:path=deployresources,scope=Namespaced,shortName=drs
 type DeployResource struct {
 	metav1.TypeMeta   `json:",inline"`
