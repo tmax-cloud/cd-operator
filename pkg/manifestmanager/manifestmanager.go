@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 )
@@ -23,6 +22,7 @@ import (
 var log = logf.Log.WithName("manifest-manager")
 
 type ManifestManager struct {
+	Client client.Client
 }
 
 type DownloadURL struct {
@@ -111,20 +111,8 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		return err
 	}
 
-	cfg, err := config.GetConfig()
-	if err != nil {
-		log.Error(err, "GetConfig failed..")
-		return err
-	}
-
-	c, err := client.New(cfg, client.Options{})
-	if err != nil {
-		log.Error(err, "Create client failed..")
-		return err
-	}
-
 	rawExt := &runtime.RawExtension{Raw: bytes}
-	unstObj, err := BytesToUnstructuredObject(rawExt)
+	unstObj, err := bytesToUnstructuredObject(rawExt)
 	if err != nil {
 		log.Error(err, "BytesToUnstructuredObject failed..")
 		return err
@@ -135,11 +123,11 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		unstObj.SetNamespace("default")
 	}
 
-	if err := c.Get(context.Background(), types.NamespacedName{
+	if err := m.Client.Get(context.Background(), types.NamespacedName{
 		Namespace: unstObj.GetNamespace(),
 		Name:      unstObj.GetName()}, unstObj); err != nil {
 		log.Info("Create..")
-		if err := c.Create(context.Background(), unstObj); err != nil {
+		if err := m.Client.Create(context.Background(), unstObj); err != nil {
 			log.Error(err, "Creating Object failed..")
 			return err
 		}
@@ -148,7 +136,7 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		unstr := unstObj.DeepCopy()
 
 		// get already existing k8s object as unstructured type
-		if err = c.Get(context.Background(), types.NamespacedName{
+		if err = m.Client.Get(context.Background(), types.NamespacedName{
 			Namespace: unstObj.GetNamespace(),
 			Name:      unstObj.GetName(),
 		}, unstr); err != nil {
@@ -165,18 +153,18 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		}
 
 		unstr.SetUnstructuredContent(finalPatch)
-		if err = c.Update(context.Background(), unstObj); err != nil {
+		if err = m.Client.Update(context.Background(), unstObj); err != nil {
 			return err
 		}
 	}
 
-	if err := createResource(unstObj, app, c); err != nil {
+	if err := createResource(unstObj, app, m.Client); err != nil {
 		panic(err)
 	}
 	return nil
 }
 
-func BytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstructured, error) {
+func bytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstructured, error) {
 	var in runtime.Object
 	var scope conversion.Scope // While not actually used within the function, need to pass in
 	if err := runtime.Convert_runtime_RawExtension_To_runtime_Object(obj, &in, scope); err != nil {
@@ -211,7 +199,6 @@ func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c
 
 	if err := c.Create(context.Background(), obj); err != nil {
 		log.Info("err")
-		// TODO : Fix "no kind is registered for the type v1.DeployResource in scheme "pkg/runtime/scheme.go:101" [recovered]"
 		panic(err)
 	}
 	log.Info("err")

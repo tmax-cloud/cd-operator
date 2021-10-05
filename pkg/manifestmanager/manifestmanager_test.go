@@ -8,7 +8,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -86,7 +90,10 @@ func TestApplyManifest(t *testing.T) {
 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	}
 
-	var m ManifestManager
+	s := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(s))
+	utilruntime.Must(cdv1.AddToScheme(s))
+
 	url := "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"
 
 	app := &cdv1.Application{
@@ -99,6 +106,8 @@ func TestApplyManifest(t *testing.T) {
 		},
 	}
 
+	fakeCli := fake.NewFakeClientWithScheme(s, app)
+	m := ManifestManager{Client: fakeCli}
 	err := m.ApplyManifest(url, app)
 	assert.Equal(t, err, nil)
 }
