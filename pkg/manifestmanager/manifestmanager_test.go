@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/bmizerany/assert"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
@@ -78,26 +79,26 @@ func TestGetManifestURL(t *testing.T) {
 	}
 }
 
-// func TestApplyManifest(t *testing.T) {
-// 	// Set loggers
-// 	if os.Getenv("CD") != "true" {
-// 		logrus.SetLevel(logrus.InfoLevel)
-// 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
-// 	}
+func TestApplyManifest(t *testing.T) {
+	// Set loggers
+	if os.Getenv("CD") != "true" {
+		logrus.SetLevel(logrus.InfoLevel)
+		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	}
 
-// 	var m ManifestManager
-// 	url := "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"
+	var m ManifestManager
+	url := "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"
 
-// 	app := &cdv1.Application{
-// 		Spec: cdv1.ApplicationSpec{
-// 			Source: cdv1.ApplicationSource{
-// 				RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
-// 				Path:           "guestbook/guestbook-ui-svc.yaml", // 아직 single yaml만 가능
-// 				TargetRevision: "main",
-// 			},
-// 		},
-// 	}
+	app := &cdv1.Application{
+		Spec: cdv1.ApplicationSpec{
+			Source: cdv1.ApplicationSource{
+				RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
+				Path:           "guestbook/guestbook-ui-svc.yaml",
+				TargetRevision: "main",
+			},
+		},
+	}
 
-// 	err := m.ApplyManifest(url, app)
-// 	assert.Equal(t, err, nil)
-// }
+	err := m.ApplyManifest(url, app)
+	assert.Equal(t, err, nil)
+}
