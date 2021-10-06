@@ -24,7 +24,7 @@ func (d Dispatcher) Handle(webhook *git.Webhook, app *cdv1.Application) error {
 
 	// Push일 경우
 	if webhook.EventType == git.EventTypePush && push != nil {
-		var mgr manifestmanager.ManifestManager
+		mgr := manifestmanager.ManifestManager{Client: d.Client}
 		urls, err := mgr.GetManifestURLList(app)
 		if err != nil {
 			return err
