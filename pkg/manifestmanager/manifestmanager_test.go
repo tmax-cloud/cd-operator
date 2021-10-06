@@ -40,12 +40,19 @@ func TestGetManifestURL(t *testing.T) {
 	// api.github.com/repos/argoproj/argocd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=master
 
 	tc := map[string]getManifestURLTestCase{
-		"githubValidURL": {
+		"githubValidURLDir": {
 			repoURL:          "https://github.com/tmax-cloud/cd-example-apps",
 			path:             "guestbook",
 			targetRevision:   "main",
 			expectedErrOccur: false,
-			expectedResult:   []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-deployment.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"},
+			expectedResult:   []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-test-svc.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-deployment.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml"},
+		},
+		"githubValidURLFile": {
+			repoURL:          "https://github.com/tmax-cloud/cd-example-apps",
+			path:             "deployment.yaml",
+			targetRevision:   "main",
+			expectedErrOccur: false,
+			expectedResult:   []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/deployment.yaml"},
 		},
 		"githubInvalidURL": {
 			repoURL:          "https://github.com/tmax-cloud/cd-example-apps-fake",
