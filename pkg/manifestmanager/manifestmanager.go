@@ -51,7 +51,6 @@ func (m *ManifestManager) GetManifestURLList(app *cdv1.Application) ([]string, e
 
 func recursivePathCheck(apiBaseURL, repo, path, revision string, manifestURLs []string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", apiBaseURL, repo, path, revision)
-	log.Info(apiURL)
 
 	// Get download_url of manifest file
 	resp, err := http.Get(apiURL)
@@ -72,18 +71,22 @@ func recursivePathCheck(apiBaseURL, repo, path, revision string, manifestURLs []
 		return nil, err
 	}
 
-	var downloadURL []DownloadURL
+	var downloadURLs []DownloadURL
+	var downloadURL DownloadURL
 
-	if err := json.Unmarshal(body, &downloadURL); err != nil {
-		log.Error(err, "Unmarshal failed..")
-		return nil, err
+	if err := json.Unmarshal(body, &downloadURLs); err != nil {
+		if err := json.Unmarshal(body, &downloadURL); err != nil {
+			log.Error(err, "Unmarshal failed..")
+			return nil, err
+		}
+		downloadURLs = append(downloadURLs, downloadURL)
 	}
 
-	for i := range downloadURL {
-		if downloadURL[i].Type == "file" {
-			manifestURLs = append(manifestURLs, downloadURL[i].DownloadURL)
-		} else if downloadURL[i].Type == "dir" {
-			manifestURLs, err = recursivePathCheck(apiBaseURL, repo, downloadURL[i].Path, revision, manifestURLs)
+	for i := range downloadURLs {
+		if downloadURLs[i].Type == "file" {
+			manifestURLs = append(manifestURLs, downloadURLs[i].DownloadURL)
+		} else if downloadURLs[i].Type == "dir" {
+			manifestURLs, err = recursivePathCheck(apiBaseURL, repo, downloadURLs[i].Path, revision, manifestURLs)
 			if err != nil {
 				return nil, err
 			}
