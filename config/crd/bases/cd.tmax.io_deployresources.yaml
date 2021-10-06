@@ -21,7 +21,7 @@ spec:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: DeployResource is resource created by an argocd application
+        description: DeployResource is resource created by an application
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation

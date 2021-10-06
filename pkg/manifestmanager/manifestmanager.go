@@ -7,11 +7,14 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -103,7 +106,7 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		return err
 	}
 
-	json, err := yaml.YAMLToJSON(body)
+	bytes, err := yaml.YAMLToJSON(body)
 	if err != nil {
 		log.Error(err, "YAMLToJSON failed..")
 		return err
@@ -121,7 +124,7 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		return err
 	}
 
-	rawExt := &runtime.RawExtension{Raw: json}
+	rawExt := &runtime.RawExtension{Raw: bytes}
 	unstObj, err := BytesToUnstructuredObject(rawExt)
 	if err != nil {
 		log.Error(err, "BytesToUnstructuredObject failed..")
@@ -133,17 +136,48 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		unstObj.SetNamespace("default")
 	}
 
-	if err := c.Create(context.Background(), unstObj); err != nil {
-		log.Error(err, "Creating Object failed..")
-		// TODO
-		// it can be 'services "guestbook-ui" already exists' err.
-		// return err
+	if err := c.Get(context.Background(), types.NamespacedName{
+		Namespace: unstObj.GetNamespace(),
+		Name:      unstObj.GetName()}, unstObj); err != nil {
+		if !errors.IsNotFound(err) { // 에러가 404일 때만 Create 시도
+			return err
+		}
+
+		log.Info("Create..")
+		if err := c.Create(context.Background(), unstObj); err != nil {
+			log.Error(err, "Creating Object failed..")
+			return err
+		}
+	} else {
+		log.Info("This object alrealy exists..Update it")
+		unstr := unstObj.DeepCopy()
+
+		// get already existing k8s object as unstructured type
+		if err = c.Get(context.Background(), types.NamespacedName{
+			Namespace: unstObj.GetNamespace(),
+			Name:      unstObj.GetName(),
+		}, unstr); err != nil {
+			return err
+		}
+
+		bytedUnstr, _ := unstr.MarshalJSON()
+		bytedUnstObj, _ := unstObj.MarshalJSON()
+		patchedByte, _ := jsonpatch.MergePatch(bytedUnstr, bytedUnstObj)
+
+		finalPatch := make(map[string]interface{})
+		if err := json.Unmarshal(patchedByte, &finalPatch); err != nil {
+			return err
+		}
+
+		unstr.SetUnstructuredContent(finalPatch)
+		if err = c.Update(context.Background(), unstObj); err != nil {
+			return err
+		}
 	}
 
 	if err := createResource(unstObj, app, c); err != nil {
 		panic(err)
 	}
-
 	return nil
 }
 
@@ -163,6 +197,10 @@ func BytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 }
 
 func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c client.Client) error {
+	// TODO
+	// 1. DeploySource의 Namespace가 unstObj의 Namespace을 따를지, app의 Namespace을 따를지 결정해야 함
+	// 2. Namespace의 대한 정보가 두 번 중복되는 부분도 확인 필요
+	// 3. Application 필드로 app.Namespace가 들어가는게 맞는지?
 	obj := &cdv1.DeployResource{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName(),
@@ -178,6 +216,7 @@ func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c
 
 	if err := c.Create(context.Background(), obj); err != nil {
 		log.Info("err")
+		// TODO : Fix "no kind is registered for the type v1.DeployResource in scheme "pkg/runtime/scheme.go:101" [recovered]"
 		panic(err)
 	}
 	log.Info("err")
