@@ -1,13 +1,21 @@
 package manifestmanager
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
+	"github.com/bmizerany/assert"
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -78,7 +86,6 @@ func TestGetManifestURL(t *testing.T) {
 	}
 }
 
-/* TODO : TestServer 적용 완료. Scheme 에러 수정한 커밋 반영 후 주석 해제 할 것
 func TestApplyManifest(t *testing.T) {
 	// Set loggers
 	if os.Getenv("CD") != "true" {
@@ -86,7 +93,8 @@ func TestApplyManifest(t *testing.T) {
 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	}
 
-	var m ManifestManager
+	s := runtime.NewScheme()
+	utilruntime.Must(cdv1.AddToScheme(s))
 	server := newTestServer()
 	app := &cdv1.Application{
 		Spec: cdv1.ApplicationSpec{
@@ -98,7 +106,11 @@ func TestApplyManifest(t *testing.T) {
 		},
 	}
 
+	fakeCli := fake.NewFakeClientWithScheme(s, app)
+	m := ManifestManager{Client: fakeCli}
 	err := m.ApplyManifest(server.URL, app)
+
+	//TODO : 아웃풋인 DeployResource을 활용해서 Test 짜기
 	assert.Equal(t, err, nil)
 }
 
@@ -113,7 +125,7 @@ func newTestServer() *httptest.Server {
 		data := `apiVersion: v1
 kind: Service
 metadata:
-  name: guestbook-ui
+  name: guestbook-ui-test
 spec:
   ports:
   - port: 80
@@ -122,9 +134,11 @@ spec:
     app: guestbook-ui
 
 `
-		io.WriteString(w, data)
+		_, err := io.WriteString(w, data)
+		if err != nil {
+			return
+		}
 	})
 
 	return httptest.NewServer(router)
 }
-*/
