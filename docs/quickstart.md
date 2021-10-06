@@ -19,9 +19,9 @@ spec:
     path: guestbook
     targetRevision: main
   destination:
-    server:
-    namespace:
-    name:
+    server: test
+    namespace: test
+    name: test
 
 ```
 위의 예시처럼, Application CRD을 cd-operator가 설치된 cluster에 apply 시킵니다.
