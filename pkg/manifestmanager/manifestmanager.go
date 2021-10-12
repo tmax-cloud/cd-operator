@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"github.com/tmax-cloud/cd-operator/pkg/cluster"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
@@ -97,6 +101,8 @@ func recursivePathCheck(apiBaseURL, repo, path, revision string, manifestURLs []
 }
 
 func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error {
+	ctx := context.Background()
+
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Error(err, "http Get failed..")
@@ -115,6 +121,33 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		return err
 	}
 
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	config, err := kubeConfig.RawConfig()
+	if err != nil {
+		log.Error(err, "Get raw kubeconfig failed..")
+		return err
+	}
+
+	if app.Spec.Destination.Name != config.CurrentContext {
+		cfg, err := cluster.GetApplicationClusterConfig(ctx, m.Client, app)
+		if err != nil {
+			log.Error(err, "GetConfig failed..")
+			return err
+		}
+
+		s := runtime.NewScheme()
+		utilruntime.Must(cdv1.AddToScheme(s))
+		c, err := client.New(cfg, client.Options{Scheme: s})
+		if err != nil {
+			log.Error(err, "Create client failed..")
+			return err
+		}
+		m.Client = c
+	}
+
 	rawExt := &runtime.RawExtension{Raw: bytes}
 	unstObj, err := bytesToUnstructuredObject(rawExt)
 	if err != nil {
@@ -122,9 +155,8 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		return err
 	}
 
-	// TODO - fix it. use Application.Spec.Destination.Namespace
 	if len(unstObj.GetNamespace()) == 0 {
-		unstObj.SetNamespace("default")
+		unstObj.SetNamespace(app.Spec.Destination.Namespace)
 	}
 
 	if err := m.Client.Get(context.Background(), types.NamespacedName{
@@ -169,6 +201,7 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 	if err := createResource(unstObj, app, m.Client); err != nil {
 		panic(err)
 	}
+
 	return nil
 }
 
@@ -188,26 +221,28 @@ func bytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 }
 
 func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c client.Client) error {
-	// TODO
-	// 1. DeploySource의 Namespace가 unstObj의 Namespace을 따를지, app의 Namespace을 따를지 결정해야 함
-	// 2. Namespace의 대한 정보가 두 번 중복되는 부분도 확인 필요
-	// 3. Application 필드로 app.Namespace가 들어가는게 맞는지?
 	obj := &cdv1.DeployResource{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName(),
+			Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
 			Namespace: app.Name,
 		},
-		Application: app.Namespace,
+		Application: app.Name,
 		Spec: cdv1.DeployResourceSpec{
 			Name:      unstObj.GetName(),
 			Kind:      unstObj.GetKind(),
 			Namespace: unstObj.GetNamespace(),
 		},
 	}
-
-	if err := c.Create(context.Background(), obj); err != nil {
-		// TODO : Fix "no kind is registered for the type v1.DeployResource in scheme "pkg/runtime/scheme.go:101" [recovered]"
-		panic(err)
+	if err := c.Get(context.Background(), types.NamespacedName{
+		Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
+		Namespace: app.Name}, obj); err != nil {
+		if !errors.IsNotFound(err) { // 에러가 404일 때만 Create 시도
+			return err
+		}
+		if err := c.Create(context.Background(), obj); err != nil {
+			panic(err)
+		}
 	}
+
 	return nil
 }
