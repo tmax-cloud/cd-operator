@@ -141,13 +141,11 @@ func (source *ApplicationSource) GetGitType() GitType {
 }
 
 type ApplicationDestination struct {
-	// Server specifies the URL of the target cluster and must be set to the Kubernetes control plane API
-	Server string `json:"server,omitempty"`
 	// Namespace specifies the target namespace for the application's resources.
 	// The namespace will only be set for namespace-scoped resources that have not set a value for .metadata.namespace
 	Namespace string `json:"namespace,omitempty"`
-	// Name is an alternate way of specifying the target cluster by its symbolic name
-	Name string `json:"name,omitempty"`
+	// Name specifies the target cluster's name
+	Name string `json:"name"`
 }
 
 // TODO

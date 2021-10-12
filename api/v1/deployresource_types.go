@@ -35,7 +35,7 @@ type DeployResource struct {
 
 // +kubebuilder:object:root=true
 
-// DeployResourceList contains the list of ArgoResources
+// DeployResourceList contains the list of DeployResources
 type DeployResourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
