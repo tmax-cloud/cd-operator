@@ -3,5 +3,9 @@ kind: Application
 metadata:
   name: application-sample
 spec:
-  # Add fields here
-  foo: bar
+  source:
+    repoURL: "https://github.com/tmax-cloud/cd-example-apps"
+    path: "guestbook/guestbook-ui-svc.yaml"
+    targetRevision: "main"
+  destination:
+    namespace: default

@@ -41,15 +41,14 @@ spec:
                   and namespace
                 properties:
                   name:
-                    description: Name specifies the target cluster's name
+                    description: Name specifies the target cluster's name. Do not
+                      enter any value if you want to deploy in current context.
                     type: string
                   namespace:
                     description: Namespace specifies the target namespace for the
                       application's resources. The namespace will only be set for
                       namespace-scoped resources that have not set a value for .metadata.namespace
                     type: string
-                required:
-                - name
                 type: object
               source:
                 description: Source is a reference to the location of the application's

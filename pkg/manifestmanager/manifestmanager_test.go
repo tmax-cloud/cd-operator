@@ -17,8 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -44,6 +44,8 @@ type applyManifestTestCase struct {
 	targetRevision string
 	destName       string
 	destNamespace  string
+
+	isDefaultCluster bool
 
 	// clusterSecret
 }
@@ -119,20 +121,15 @@ func TestApplyManifest(t *testing.T) {
 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-	config, err := kubeConfig.RawConfig()
-	require.NoError(t, err)
-
 	tc := map[string]applyManifestTestCase{
 		"defaultCluster": {
 			repoURL:        "https://github.com/tmax-cloud/cd-example-apps",
 			path:           "guestbook/guestbook-ui-svc.yaml",
 			targetRevision: "main",
-			destName:       config.CurrentContext,
+			destName:       "",
 			destNamespace:  "test",
+
+			isDefaultCluster: true,
 		},
 		// 		"externalCluster": {
 		// 			repoURL:        "https://github.com/tmax-cloud/cd-example-apps",
@@ -182,7 +179,8 @@ func TestApplyManifest(t *testing.T) {
 			}()
 			app := &cdv1.Application{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test",
+					Name:      "test",
+					Namespace: "test",
 				},
 				Spec: cdv1.ApplicationSpec{
 					Source: cdv1.ApplicationSource{
@@ -196,15 +194,22 @@ func TestApplyManifest(t *testing.T) {
 					},
 				},
 			}
-			sec := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "testDestination-kubeconfig",
-				},
-				StringData: map[string]string{
-					// "value": c.value,
-				},
+
+			var fakeCli client.Client
+			if !c.isDefaultCluster {
+				sec := &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      c.destName + "-kubeconfig",
+						Namespace: app.Namespace,
+					},
+					StringData: map[string]string{
+						// "value": c.value,
+					},
+				}
+				fakeCli = fake.NewFakeClientWithScheme(s, app, sec)
+			} else {
+				fakeCli = fake.NewFakeClientWithScheme(s, app)
 			}
-			fakeCli := fake.NewFakeClientWithScheme(s, app, sec)
 			m := ManifestManager{Client: fakeCli}
 			err = m.ApplyManifest(server.URL, app)
 			assert.Equal(t, err, nil)

@@ -144,8 +144,8 @@ type ApplicationDestination struct {
 	// Namespace specifies the target namespace for the application's resources.
 	// The namespace will only be set for namespace-scoped resources that have not set a value for .metadata.namespace
 	Namespace string `json:"namespace,omitempty"`
-	// Name specifies the target cluster's name
-	Name string `json:"name"`
+	// Name specifies the target cluster's name. Do not enter any value if you want to deploy in current context.
+	Name string `json:"name,omitempty"`
 }
 
 // TODO
