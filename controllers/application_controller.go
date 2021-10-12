@@ -28,6 +28,7 @@ import (
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/internal/utils"
+	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -103,6 +104,18 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
 			log.Error(err, "")
 			return ctrl.Result{}, err
+		}
+		mgr := manifestmanager.ManifestManager{Client: r.Client}
+		urls, err := mgr.GetManifestURLList(instance)
+		if err != nil {
+			log.Error(err, "")
+			return ctrl.Result{}, err
+		}
+		for _, url := range urls {
+			if err = mgr.ApplyManifest(url, instance); err != nil {
+				log.Error(err, "")
+				return ctrl.Result{}, err
+			}
 		}
 	}
 

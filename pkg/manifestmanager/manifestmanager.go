@@ -11,6 +11,7 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/cluster"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
@@ -121,17 +121,7 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		return err
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-	config, err := kubeConfig.RawConfig()
-	if err != nil {
-		log.Error(err, "Get raw kubeconfig failed..")
-		return err
-	}
-
-	if app.Spec.Destination.Name != config.CurrentContext {
+	if app.Spec.Destination.Name != "" {
 		cfg, err := cluster.GetApplicationClusterConfig(ctx, m.Client, app)
 		if err != nil {
 			log.Error(err, "GetConfig failed..")
@@ -233,10 +223,20 @@ func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c
 			Namespace: unstObj.GetNamespace(),
 		},
 	}
+
+	if err := c.Get(context.Background(), types.NamespacedName{Name: app.Name}, &v1.Namespace{}); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		if err := c.Create(context.Background(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: app.Name}}); err != nil {
+			panic(err)
+		}
+	}
+
 	if err := c.Get(context.Background(), types.NamespacedName{
 		Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
 		Namespace: app.Name}, obj); err != nil {
-		if !errors.IsNotFound(err) { // 에러가 404일 때만 Create 시도
+		if !errors.IsNotFound(err) {
 			return err
 		}
 		if err := c.Create(context.Background(), obj); err != nil {
