@@ -2,14 +2,15 @@ package apiserver
 
 import (
 	"fmt"
-	authorization "k8s.io/api/authorization/v1"
 	"net/http"
 	"strings"
+
+	authorization "k8s.io/api/authorization/v1"
 )
 
 const (
 	// APIGroup is a common group for api
-	APIGroup = "cicdapi.tmax.io"
+	APIGroup = "cdapi.tmax.io"
 
 	// NamespaceParamKey is a common key for namespace var
 	NamespaceParamKey = "namespace"
