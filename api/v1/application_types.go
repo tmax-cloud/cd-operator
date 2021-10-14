@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/operator-framework/operator-lib/status"
+	"github.com/tmax-cloud/cd-operator/internal/configs"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -161,11 +162,6 @@ const (
 	ApplicationSourceTypePlugin    ApplicationSourceType = "Plugin"
 )
 
-const (
-	ConfigMapNameCDConfig      = "cd-config"
-	ConfigMapNamespaceCDSystem = "cd-system"
-)
-
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})
 }
@@ -202,12 +198,6 @@ func (app *Application) GetToken(c client.Client) (string, error) {
 }
 
 // GetWebhookServerAddress returns Server address which webhook events will be received
-// TODO: modify to use config controller & expose controller
 func (app *Application) GetWebhookServerAddress(c client.Client) string {
-	cm := &corev1.ConfigMap{}
-	if err := c.Get(context.Background(), types.NamespacedName{Name: ConfigMapNameCDConfig, Namespace: ConfigMapNamespaceCDSystem}, cm); err != nil {
-		return ""
-	}
-	currentExternalHostName := cm.Data["externalHostName"]
-	return fmt.Sprintf("http://%s/webhook/%s/%s", currentExternalHostName, app.Namespace, app.Name)
+	return fmt.Sprintf("http://%s/webhook/%s/%s", configs.CurrentExternalHostName, app.Namespace, app.Name)
 }

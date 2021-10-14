@@ -5,6 +5,55 @@ metadata:
     control-plane: controller-manager
   name: cd-system
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cd-webhook
+  namespace: cd-system
+  labels:
+    cd.tmax.io/part-of: controller
+spec:
+  selector:
+    control-plane: controller-manager
+  ports:
+    - name: webhook
+      port: 24335
+    - name: api
+      port: 34335
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cd-webhook
+  namespace: cd-system
+  labels:
+    cd.tmax.io/part-of: controller
+spec:
+  rules:
+    - host: waiting.for.loadbalancer
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: cd-webhook
+                port:
+                  number: 24335
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cd-config
+  namespace: cd-system
+  labels:
+    cd.tmax.io/part-of: controller
+data:
+  externalHostName: ""
+  exposeMode: "Ingress"
+  ingressClass: ""
+  ingressHost: ""
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,34 +73,34 @@ spec:
         control-plane: controller-manager
     spec:
       containers:
-      - command:
-        - /controller
-        image: tmaxcloudck/cd-operator:latest
-        imagePullPolicy: Always
-        name: manager
-        resources:
-          requests:
-            cpu: 100m
-            memory: 100Mi
-        volumeMounts:
-          - mountPath: /logs
-            name: operator-log
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-            scheme: HTTP
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 5
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-            scheme: HTTP
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 5
+        - command:
+            - /controller
+          image: tmaxcloudck/cd-operator:latest
+          imagePullPolicy: Always
+          name: manager
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - mountPath: /logs
+              name: operator-log
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: operator-log
           hostPath:

@@ -20,6 +20,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/tmax-cloud/cd-operator/internal/configs"
 	"github.com/tmax-cloud/cd-operator/pkg/dispatcher"
 	"github.com/tmax-cloud/cd-operator/pkg/git"
 	"github.com/tmax-cloud/cd-operator/pkg/server"
@@ -100,6 +101,23 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+
+	// Config Controller
+	// Initiate first, before any other components start
+	cfgCtrl := &controllers.ConfigReconciler{Config: mgr.GetConfig(), Log: ctrl.Log.WithName("controllers").WithName("ConfigController"), Handlers: map[string]configs.Handler{}}
+	go cfgCtrl.Start()
+	cfgCtrl.Add(configs.ConfigMapNameCDConfig, configs.ApplyControllerConfigChange)
+	// Wait for initial config reconcile
+	<-configs.ControllerInitCh
+
+	// Start webhook expose controller
+	setupLog.Info("Starting webhook expose controller")
+	exposeCon, err := controllers.NewExposeController(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create expose controller")
+		os.Exit(1)
+	}
+	go exposeCon.Start(nil)
 
 	// Create and start webhook server
 	srv := server.New(mgr.GetClient(), mgr.GetConfig())
