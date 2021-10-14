@@ -9,6 +9,17 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - secrets
   - serviceaccounts
   verbs:
@@ -45,6 +56,29 @@ rules:
   - update
   - watch
 - apiGroups:
+  - apiregistration.k8s.io
+  resources:
+  - apiservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - cd.tmax.io
   resources:
   - applications
@@ -65,6 +99,12 @@ rules:
   - patch
   - update
 - apiGroups:
+  - cdapi.tmax.io
+  resources:
+  - applications/sync
+  verbs:
+  - update
+- apiGroups:
   - networking.k8s.io
   resources:
   - ingresses
@@ -75,4 +115,23 @@ rules:
   - list
   - patch
   - update
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: cd-manager-role
+  namespace: kube-system
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - extension-apiserver-authentication
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
   - watch

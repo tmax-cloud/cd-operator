@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/tmax-cloud/cd-operator/internal/configs"
+	"github.com/tmax-cloud/cd-operator/pkg/apiserver"
 	"github.com/tmax-cloud/cd-operator/pkg/dispatcher"
 	"github.com/tmax-cloud/cd-operator/pkg/git"
 	"github.com/tmax-cloud/cd-operator/pkg/server"
@@ -38,6 +39,7 @@ import (
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/controllers"
+	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -49,6 +51,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(apiregv1.AddToScheme(scheme))
 	utilruntime.Must(cdv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
@@ -124,6 +127,10 @@ func main() {
 	// Add plugins for webhook
 	server.AddPlugin([]git.EventType{git.EventTypePullRequest, git.EventTypePush}, &dispatcher.Dispatcher{Client: mgr.GetClient()})
 	go srv.Start()
+
+	// Start API aggregation server
+	apiServer := apiserver.New(mgr.GetClient(), mgr.GetConfig(), mgr.GetCache())
+	go apiServer.Start()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

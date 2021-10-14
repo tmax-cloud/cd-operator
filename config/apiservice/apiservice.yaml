@@ -1,0 +1,13 @@
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1.cdapi.tmax.io
+spec:
+  group: cdapi.tmax.io
+  groupPriorityMinimum: 100
+  service:
+    name: cd-webhook
+    namespace: cd-system
+    port: 34335
+  version: v1
+  versionPriority: 100

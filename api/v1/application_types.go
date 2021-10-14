@@ -30,12 +30,14 @@ import (
 	"net/url"
 )
 
-// ApplicationKind is kind string
 const (
+	// ApplicationKind is kind string
 	ApplicationKind = "Applications"
+	// APIKindApplication is application's api kind string
+	APIKindApplication = "applications"
 )
 
-// Condition keys for IApplication
+// Condition keys for Application
 const (
 	ApplicationConditionReady             = status.ConditionType("ready")
 	ApplicationConditionWebhookRegistered = status.ConditionType("webhook-registered")
@@ -201,3 +203,8 @@ func (app *Application) GetToken(c client.Client) (string, error) {
 func (app *Application) GetWebhookServerAddress(c client.Client) string {
 	return fmt.Sprintf("http://%s/webhook/%s/%s", configs.CurrentExternalHostName, app.Namespace, app.Name)
 }
+
+// Approval API kinds
+const (
+	ApplicationAPISync = "sync"
+)

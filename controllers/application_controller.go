@@ -41,6 +41,7 @@ type ApplicationReconciler struct {
 
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=cdapi.tmax.io,resources=applications/sync,verbs=update
 //+kubebuilder:rbac:groups="",resources=secrets;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 
