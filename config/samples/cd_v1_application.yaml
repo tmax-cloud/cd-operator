@@ -2,10 +2,13 @@ apiVersion: cd.tmax.io/v1
 kind: Application
 metadata:
   name: application-sample
+  namespace: default
 spec:
   source:
     repoURL: "https://github.com/tmax-cloud/cd-example-apps"
-    path: "guestbook/guestbook-ui-svc.yaml"
+    path: "guestbook"
     targetRevision: "main"
   destination:
     namespace: default
+  syncPolicy:
+    autosync: true

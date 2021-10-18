@@ -25,10 +25,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/internal/utils"
-	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
+	"github.com/tmax-cloud/cd-operator/pkg/sync"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -37,7 +38,14 @@ type ApplicationReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
+	context.Context
 }
+
+const (
+	finalizer = "cd.tmax.io/finalizer"
+)
+
+var checkFlags map[string]chan bool
 
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications/status,verbs=get;update;patch
@@ -47,7 +55,7 @@ type ApplicationReconciler struct {
 
 // Reconcile reconciles Application
 func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+	ctx := r.Context
 	log := r.Log.WithValues("Application", req.NamespacedName)
 
 	instance := &cdv1.Application{}
@@ -58,7 +66,18 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 		log.Error(err, "")
 		return ctrl.Result{}, err
 	}
+
+	if instance.Status.Sync.Status == "" {
+		sync.SetDefaultSyncStatus(instance)
+	}
+
+	if instance.Spec.SyncPolicy.SyncCheckPeriod == 0 {
+		sync.SetDefaultSyncCheckPerod(instance)
+	}
+
 	original := instance.DeepCopy()
+
+	r.manageSyncRoutine(instance)
 
 	// New Condition default
 	cond := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
@@ -77,18 +96,9 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 		}
 	}()
 
-	/*
-		exit, err := r.handleFinalizer(instance, original)
-		if err != nil {
-			log.Error(err, "")
-			cond.Reason = "CannotHandleFinalizer"
-			cond.Message = err.Error()
-			return ctrl.Result{}, nil
-		}
-		if exit {
-			return ctrl.Result{}, nil
-		}
-	*/
+	if err := r.handleFinalizer(instance); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// Set secret
 	secretChanged := r.setSecretString(instance) // for WebhookSecret
@@ -106,21 +116,86 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			log.Error(err, "")
 			return ctrl.Result{}, err
 		}
-		mgr := manifestmanager.ManifestManager{Client: r.Client}
-		urls, err := mgr.GetManifestURLList(instance)
-		if err != nil {
+		instance.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
+		if err := sync.CheckSync(r.Client, instance, false); err != nil {
 			log.Error(err, "")
 			return ctrl.Result{}, err
-		}
-		for _, url := range urls {
-			if err = mgr.ApplyManifest(url, instance); err != nil {
-				log.Error(err, "")
-				return ctrl.Result{}, err
-			}
 		}
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ApplicationReconciler) handleFinalizer(instance *cdv1.Application) error {
+	isAppMarkedToBeDeleted := instance.DeletionTimestamp != nil
+	if isAppMarkedToBeDeleted {
+		if controllerutil.ContainsFinalizer(instance, finalizer) {
+			if err := r.finalizeApp(instance); err != nil {
+				return err
+			}
+		}
+		controllerutil.RemoveFinalizer(instance, finalizer)
+		if err := r.Update(r.Context, instance); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if !controllerutil.ContainsFinalizer(instance, finalizer) {
+		controllerutil.AddFinalizer(instance, finalizer)
+		if err := r.Update(r.Context, instance); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) finalizeApp(instance *cdv1.Application) error {
+	if checkFlags[instance.Name+instance.Namespace] != nil {
+		checkFlags[instance.Name+instance.Namespace] <- false
+		delete(checkFlags, instance.Name+instance.Namespace)
+	}
+	if instance.Spec.Source.Token != nil {
+		gitCli, err := utils.GetGitCli(instance, r.Client)
+		if err != nil {
+			r.Log.Error(err, "")
+			return err
+		}
+		hookList, err := gitCli.ListWebhook()
+		if err != nil {
+			r.Log.Error(err, "")
+			return err
+		}
+		for _, h := range hookList {
+			if h.URL == instance.GetWebhookServerAddress(r.Client) {
+				r.Log.Info("Deleting webhook " + h.URL)
+				if err := gitCli.DeleteWebhook(h.ID); err != nil {
+					r.Log.Error(err, "")
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) manageSyncRoutine(instance *cdv1.Application) {
+	instance.Status.Sync.Status = cdv1.SyncStatusCodeUnknown
+
+	if checkFlags == nil {
+		checkFlags = make(map[string]chan bool)
+	}
+
+	if checkFlags[instance.Name+instance.Namespace] != nil {
+		checkFlags[instance.Name+instance.Namespace] <- false
+		delete(checkFlags, instance.Name+instance.Namespace)
+	}
+
+	checking := make(chan bool, 2)
+	checking <- true
+	checkFlags[instance.Name+instance.Namespace] = checking
+
+	go sync.PeriodicSyncCheck(r.Client, instance, checking)
 }
 
 // Set status.secrets, return if it's changed or not

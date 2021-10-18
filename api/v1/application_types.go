@@ -48,16 +48,49 @@ const (
 	ApplicationConditionReasonNoGitToken = "noGitToken"
 )
 
+// SyncStatusCode is a type which represents possible comparison results
+type SyncStatusCode string
+
+// Possible comparison results
+const (
+	// SyncStatusCodeUnknown indicates that the status of a sync could not be reliably determined
+	SyncStatusCodeUnknown SyncStatusCode = "Unknown"
+	// SyncStatusCodeOutOfSync indicates that desired and live states match
+	SyncStatusCodeSynced SyncStatusCode = "Synced"
+	// SyncStatusCodeOutOfSync indicates that there is a drift between desired and live states
+	SyncStatusCodeOutOfSync SyncStatusCode = "OutOfSync"
+)
+
+// SyncPolicy controls when a sync will be performed in response to updates in git
+type SyncPolicy struct {
+	// AutoSync will keep an application synced to the target revision if it is set true
+	AutoSync bool `json:"autosync,omitempty"`
+	// SyncCheckPeriod is period to check sync in sec
+	SyncCheckPeriod int64 `json:"SyncCheckPeriod,omitempty"`
+}
+
+// SyncStatus contains information about the currently observed live and desired states of an application
+type SyncStatus struct {
+	// Status is the sync state of the comparison
+	Status SyncStatusCode `json:"status,omitempty"`
+	// TimeCheck is time after last sync in second
+	TimeCheck int64 `json:"timeCheck,omitempty"`
+}
+
 // ApplicationSpec defines the desired state of Application
 type ApplicationSpec struct {
 	// Source is a reference to the location of the application's manifests or chart
 	Source ApplicationSource `json:"source"`
 	// Destination is a reference to the target Kubernetes server and namespace
 	Destination ApplicationDestination `json:"destination"`
+	// SyncPolicy controls when and how a sync will be performed
+	SyncPolicy SyncPolicy `json:"syncPolicy,omitempty"`
 }
 
 // ApplicationStatus defines the observed state of Application
 type ApplicationStatus struct {
+	// SyncStatus contains information about the application's current sync status
+	Sync SyncStatus `json:"sync,omitempty"`
 	// Conditions of IntegrationConfig
 	Conditions status.Conditions `json:"conditions"`
 	Secrets    string            `json:"secrets,omitempty"` // TODO 왜 필요해?
@@ -112,8 +145,6 @@ func (source *ApplicationSource) GetAPIUrl() string {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(u.Host)
 
 	if u.Host == "github.com" {
 		return GithubDefaultAPIUrl

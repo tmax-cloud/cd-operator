@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -87,9 +88,10 @@ func main() {
 	}
 
 	if err = (&controllers.ApplicationReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Application"),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Log:     ctrl.Log.WithName("controllers").WithName("Application"),
+		Scheme:  mgr.GetScheme(),
+		Context: context.Background(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Application")
 		os.Exit(1)

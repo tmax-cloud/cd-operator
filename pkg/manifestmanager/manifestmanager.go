@@ -28,6 +28,7 @@ var log = logf.Log.WithName("manifest-manager")
 
 type ManifestManager struct {
 	Client client.Client
+	context.Context
 }
 
 type DownloadURL struct {
@@ -100,32 +101,30 @@ func recursivePathCheck(apiBaseURL, repo, path, revision string, manifestURLs []
 	return manifestURLs, nil
 }
 
-func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error {
-	ctx := context.Background()
-
+func (m *ManifestManager) ObjectFromManifest(url string, app *cdv1.Application) (*unstructured.Unstructured, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Error(err, "http Get failed..")
-		return err
+		return nil, err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Error(err, "Read response body failed..")
-		return err
+		return nil, err
 	}
 
 	bytes, err := yaml.YAMLToJSON(body)
 	if err != nil {
 		log.Error(err, "YAMLToJSON failed..")
-		return err
+		return nil, err
 	}
 
 	if app.Spec.Destination.Name != "" {
-		cfg, err := cluster.GetApplicationClusterConfig(ctx, m.Client, app)
+		cfg, err := cluster.GetApplicationClusterConfig(m.Context, m.Client, app)
 		if err != nil {
 			log.Error(err, "GetConfig failed..")
-			return err
+			return nil, err
 		}
 
 		s := runtime.NewScheme()
@@ -133,7 +132,7 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 		c, err := client.New(cfg, client.Options{Scheme: s})
 		if err != nil {
 			log.Error(err, "Create client failed..")
-			return err
+			return nil, err
 		}
 		m.Client = c
 	}
@@ -142,53 +141,66 @@ func (m *ManifestManager) ApplyManifest(url string, app *cdv1.Application) error
 	unstObj, err := bytesToUnstructuredObject(rawExt)
 	if err != nil {
 		log.Error(err, "BytesToUnstructuredObject failed..")
-		return err
+		return nil, err
 	}
 
 	if len(unstObj.GetNamespace()) == 0 {
 		unstObj.SetNamespace(app.Spec.Destination.Namespace)
 	}
+	return unstObj, nil
+}
 
-	if err := m.Client.Get(context.Background(), types.NamespacedName{
-		Namespace: unstObj.GetNamespace(),
-		Name:      unstObj.GetName()}, unstObj); err != nil {
-		if !errors.IsNotFound(err) { // 에러가 404일 때만 Create 시도
-			return err
+func (m *ManifestManager) CompareWithManifest(manifestObj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	deployedObj := manifestObj.DeepCopy()
+
+	if err := m.Client.Get(m.Context, types.NamespacedName{
+		Namespace: deployedObj.GetNamespace(),
+		Name:      deployedObj.GetName()}, deployedObj); err != nil {
+		if errors.IsNotFound(err) {
+			return manifestObj, err
 		}
+		return nil, err
+	}
 
+	bytedDeployedObj, _ := deployedObj.MarshalJSON()
+	bytedManifestObj, _ := manifestObj.MarshalJSON()
+
+	patchedByte, _ := jsonpatch.MergePatch(bytedDeployedObj, bytedManifestObj)
+
+	patchedObj := make(map[string]interface{})
+	if err := json.Unmarshal(patchedByte, &patchedObj); err != nil {
+		return nil, err
+	}
+
+	manifestObj.SetUnstructuredContent(patchedObj)
+	if err := m.Client.Update(m.Context, manifestObj, client.DryRunAll); err != nil {
+		return nil, err
+	}
+
+	bytedManifestObj, _ = manifestObj.MarshalJSON()
+
+	if string(bytedDeployedObj) != string(bytedManifestObj) {
+		log.Info("Deployed resource does not synced with manifests..")
+		return manifestObj, nil
+	}
+
+	return nil, nil
+}
+
+func (m *ManifestManager) ApplyManifest(exist bool, app *cdv1.Application, manifestObj *unstructured.Unstructured) error {
+	if !exist {
 		log.Info("Create..")
-		if err := m.Client.Create(context.Background(), unstObj); err != nil {
+		if err := m.Client.Create(m.Context, manifestObj); err != nil {
 			log.Error(err, "Creating Object failed..")
 			return err
 		}
 	} else {
-		log.Info("This object alrealy exists..Update it")
-		unstr := unstObj.DeepCopy()
-
-		// get already existing k8s object as unstructured type
-		if err = m.Client.Get(context.Background(), types.NamespacedName{
-			Namespace: unstObj.GetNamespace(),
-			Name:      unstObj.GetName(),
-		}, unstr); err != nil {
-			return err
-		}
-
-		bytedUnstr, _ := unstr.MarshalJSON()
-		bytedUnstObj, _ := unstObj.MarshalJSON()
-		patchedByte, _ := jsonpatch.MergePatch(bytedUnstr, bytedUnstObj)
-
-		finalPatch := make(map[string]interface{})
-		if err := json.Unmarshal(patchedByte, &finalPatch); err != nil {
-			return err
-		}
-
-		unstr.SetUnstructuredContent(finalPatch)
-		if err = m.Client.Update(context.Background(), unstObj); err != nil {
+		if err := m.Client.Update(m.Context, manifestObj); err != nil {
 			return err
 		}
 	}
 
-	if err := createResource(unstObj, app, m.Client); err != nil {
+	if err := m.createDeployResource(manifestObj, app); err != nil {
 		panic(err)
 	}
 
@@ -210,7 +222,7 @@ func bytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 	return &unstructured.Unstructured{Object: unstrObj}, nil
 }
 
-func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c client.Client) error {
+func (m *ManifestManager) createDeployResource(unstObj *unstructured.Unstructured, app *cdv1.Application) error {
 	obj := &cdv1.DeployResource{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
@@ -224,22 +236,22 @@ func createResource(unstObj *unstructured.Unstructured, app *cdv1.Application, c
 		},
 	}
 
-	if err := c.Get(context.Background(), types.NamespacedName{Name: app.Name}, &v1.Namespace{}); err != nil {
+	if err := m.Client.Get(m.Context, types.NamespacedName{Name: app.Name}, &v1.Namespace{}); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		if err := c.Create(context.Background(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: app.Name}}); err != nil {
+		if err := m.Client.Create(m.Context, &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: app.Name}}); err != nil {
 			panic(err)
 		}
 	}
 
-	if err := c.Get(context.Background(), types.NamespacedName{
+	if err := m.Client.Get(m.Context, types.NamespacedName{
 		Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
 		Namespace: app.Name}, obj); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		if err := c.Create(context.Background(), obj); err != nil {
+		if err := m.Client.Create(m.Context, obj); err != nil {
 			panic(err)
 		}
 	}
