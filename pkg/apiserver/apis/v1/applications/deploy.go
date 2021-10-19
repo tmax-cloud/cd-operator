@@ -23,6 +23,7 @@ import (
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
+	"github.com/tmax-cloud/cd-operator/pkg/sync"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/tmax-cloud/cd-operator/internal/apiserver"
@@ -60,16 +61,9 @@ func (h *handler) updateDeploy(w http.ResponseWriter, req *http.Request) {
 	}
 	// sync resources with manitests
 	// TODO: application의 sync status, sync 옵션 등 추가하여 분기 필요.
-	mgr := manifestmanager.ManifestManager{Client: h.k8sClient}
-	urls, err := mgr.GetManifestURLList(app)
-	if err != nil {
-		log.Error(err, "")
+	mgr := manifestmanager.ManifestManager{Client: h.k8sClient, Context: context.Background()}
+	if err := sync.CheckSync(mgr.Client, app, true); err != nil {
+		log.Info(err.Error())
 		return
-	}
-	for _, url := range urls {
-		if err = mgr.ApplyManifest(url, app); err != nil {
-			log.Error(err, "")
-			return
-		}
 	}
 }

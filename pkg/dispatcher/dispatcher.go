@@ -5,7 +5,7 @@ import (
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/git"
-	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
+	"github.com/tmax-cloud/cd-operator/pkg/sync"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -24,15 +24,9 @@ func (d Dispatcher) Handle(webhook *git.Webhook, app *cdv1.Application) error {
 
 	// Push일 경우
 	if webhook.EventType == git.EventTypePush && push != nil {
-		mgr := manifestmanager.ManifestManager{Client: d.Client}
-		urls, err := mgr.GetManifestURLList(app)
-		if err != nil {
+		app.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
+		if err := sync.CheckSync(d.Client, app, true); err != nil {
 			return err
-		}
-		for _, url := range urls {
-			if err = mgr.ApplyManifest(url, app); err != nil {
-				return err
-			}
 		}
 	}
 	return nil

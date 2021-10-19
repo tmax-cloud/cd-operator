@@ -106,6 +106,18 @@ spec:
                 required:
                 - repoURL
                 type: object
+              syncPolicy:
+                description: SyncPolicy controls when and how a sync will be performed
+                properties:
+                  autosync:
+                    description: AutoSync will keep an application synced to the target
+                      revision if it is set true
+                    type: boolean
+                  syncCheckPeriod:
+                    description: SyncCheckPeriod is period to check sync in sec
+                    format: int64
+                    type: integer
+                type: object
             required:
             - destination
             - source
@@ -155,6 +167,18 @@ spec:
                 type: array
               secrets:
                 type: string
+              sync:
+                description: SyncStatus contains information about the application's
+                  current sync status
+                properties:
+                  status:
+                    description: Status is the sync state of the comparison
+                    type: string
+                  timeCheck:
+                    description: TimeCheck is time after last sync in second
+                    format: int64
+                    type: integer
+                type: object
             required:
             - conditions
             type: object
