@@ -9,7 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Dispatcher dispatches IntegrationJob when webhook is called
+// Dispatcher dispatches Application when webhook is called
 // A kind of 'plugin' for webhook handler
 type Dispatcher struct {
 	Client client.Client

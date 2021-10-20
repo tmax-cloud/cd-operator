@@ -20,7 +20,6 @@ spec:
       port: 24335
     - name: api
       port: 34335
-  type: LoadBalancer
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -50,9 +49,9 @@ metadata:
   labels:
     cd.tmax.io/part-of: controller
 data:
-  externalHostName: "cicd-team.vingsu.com:8080"
-  exposeMode: "LoadBalancer"
-  ingressClass: "nginx-shd"
+  externalHostName: ""
+  exposeMode: ""
+  ingressClass: ""
   ingressHost: ""
 ---
 apiVersion: apps/v1
