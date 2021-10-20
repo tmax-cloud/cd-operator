@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -47,9 +46,9 @@ const (
 )
 
 var (
-	syncStopFlags map[string]chan bool
-	syncTickers   map[string]*time.Ticker
-	syncPeriods   map[string]int64
+	syncStopFlags map[string]chan bool    = make(map[string]chan bool)
+	syncTickers   map[string]*time.Ticker = make(map[string]*time.Ticker)
+	syncPeriods   map[string]int64        = make(map[string]int64)
 )
 
 //+kubebuilder:rbac:groups=cd.tmax.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
@@ -159,10 +158,7 @@ func (r *ApplicationReconciler) handleFinalizer(instance *cdv1.Application) erro
 }
 
 func (r *ApplicationReconciler) finalizeApp(instance *cdv1.Application) error {
-	if err := deleteSyncFlag(instance); err != nil {
-		r.Log.Error(err, "deleteSyncFlag error")
-		return err
-	}
+	deleteSyncFlag(instance)
 	// if instance.Spec.Source.Token != nil {
 	// 	gitCli, err := utils.GetGitCli(instance, r.Client)
 	// 	if err != nil {
@@ -191,12 +187,8 @@ func (r *ApplicationReconciler) manageSyncRoutine(instance *cdv1.Application) er
 	instance.Status.Sync.Status = cdv1.SyncStatusCodeUnknown
 	appKeyName := instance.Name + "/" + instance.Namespace
 
-	initSyncFlags()
-
 	if instance.Spec.SyncPolicy.SyncCheckPeriod != syncPeriods[appKeyName] {
-		if err := deleteSyncFlag(instance); err != nil {
-			return err
-		}
+		deleteSyncFlag(instance)
 	}
 	if !existingSyncRoutine(appKeyName) {
 		done, ticker := registerSyncFlag(instance)
@@ -205,20 +197,8 @@ func (r *ApplicationReconciler) manageSyncRoutine(instance *cdv1.Application) er
 	return nil
 }
 
-func initSyncFlags() {
-	if syncStopFlags == nil {
-		syncStopFlags = make(map[string]chan bool)
-	}
-	if syncTickers == nil {
-		syncTickers = make(map[string]*time.Ticker)
-	}
-	if syncPeriods == nil {
-		syncPeriods = make(map[string]int64)
-	}
-}
-
 func existingSyncRoutine(appKeyName string) bool {
-	return syncStopFlags[appKeyName] != nil && syncTickers[appKeyName] != nil
+	return syncStopFlags[appKeyName] != nil && syncTickers[appKeyName] != nil && syncPeriods[appKeyName] != 0
 }
 
 func registerSyncFlag(instance *cdv1.Application) (chan bool, *time.Ticker) {
@@ -235,21 +215,16 @@ func registerSyncFlag(instance *cdv1.Application) (chan bool, *time.Ticker) {
 	return done, ticker
 }
 
-func deleteSyncFlag(instance *cdv1.Application) error {
+func deleteSyncFlag(instance *cdv1.Application) {
 	appKeyName := instance.Name + "/" + instance.Namespace
 
 	if syncStopFlags[appKeyName] != nil && syncTickers[appKeyName] != nil {
 		syncStopFlags[appKeyName] <- true
-		delete(syncStopFlags, appKeyName)
-
 		syncTickers[appKeyName].Stop()
-		delete(syncTickers, appKeyName)
-
-		delete(syncPeriods, appKeyName)
-
-		return nil
 	}
-	return fmt.Errorf("No Sync Flags name" + appKeyName + "!")
+	delete(syncStopFlags, appKeyName)
+	delete(syncTickers, appKeyName)
+	delete(syncPeriods, appKeyName)
 }
 
 // Set status.secrets, return if it's changed or not
