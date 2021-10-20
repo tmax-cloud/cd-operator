@@ -81,10 +81,7 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 
 	original := instance.DeepCopy()
 
-	if err := r.manageSyncRoutine(instance); err != nil {
-		log.Error(err, "manageSyncRoutine failed..")
-		return ctrl.Result{}, err
-	}
+	r.manageSyncRoutine(instance)
 
 	// New Condition default
 	cond := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
@@ -123,11 +120,12 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			log.Error(err, "")
 			return ctrl.Result{}, err
 		}
-		instance.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
-		if err := sync.CheckSync(r.Client, instance, false); err != nil {
-			log.Error(err, "")
-			return ctrl.Result{}, err
-		}
+	}
+
+	instance.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
+	if err := sync.CheckSync(r.Client, instance, false); err != nil {
+		log.Error(err, "")
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -159,46 +157,36 @@ func (r *ApplicationReconciler) handleFinalizer(instance *cdv1.Application) erro
 
 func (r *ApplicationReconciler) finalizeApp(instance *cdv1.Application) error {
 	deleteSyncFlag(instance)
-	// if instance.Spec.Source.Token != nil {
-	// 	gitCli, err := utils.GetGitCli(instance, r.Client)
-	// 	if err != nil {
-	// 		r.Log.Error(err, "")
-	// 		return err
-	// 	}
-	// 	hookList, err := gitCli.ListWebhook()
-	// 	if err != nil {
-	// 		r.Log.Error(err, "")
-	// 		return err
-	// 	}
-	// 	for _, h := range hookList {
-	// 		if h.URL == instance.GetWebhookServerAddress() {
-	// 			r.Log.Info("Deleting webhook " + h.URL)
-	// 			if err := gitCli.DeleteWebhook(h.ID); err != nil {
-	// 				r.Log.Error(err, "")
-	// 				return err
-	// 			}
-	// 		}
-	// 	}
-	// }
+	if instance.Spec.Source.Token != nil {
+		gitCli, err := utils.GetGitCli(instance, r.Client)
+		if err != nil {
+			r.Log.Error(err, "")
+			return err
+		}
+		hookList, err := gitCli.ListWebhook()
+		if err != nil {
+			r.Log.Error(err, "")
+			return err
+		}
+		for _, h := range hookList {
+			if h.URL == instance.GetWebhookServerAddress() {
+				r.Log.Info("Deleting webhook " + h.URL)
+				if err := gitCli.DeleteWebhook(h.ID); err != nil {
+					r.Log.Error(err, "")
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }
 
-func (r *ApplicationReconciler) manageSyncRoutine(instance *cdv1.Application) error {
+func (r *ApplicationReconciler) manageSyncRoutine(instance *cdv1.Application) {
 	instance.Status.Sync.Status = cdv1.SyncStatusCodeUnknown
-	appKeyName := instance.Name + "/" + instance.Namespace
 
-	if instance.Spec.SyncPolicy.SyncCheckPeriod != syncPeriods[appKeyName] {
-		deleteSyncFlag(instance)
-	}
-	if !existingSyncRoutine(appKeyName) {
-		done, ticker := registerSyncFlag(instance)
-		go sync.PeriodicSyncCheck(r.Client, instance, done, ticker)
-	}
-	return nil
-}
-
-func existingSyncRoutine(appKeyName string) bool {
-	return syncStopFlags[appKeyName] != nil && syncTickers[appKeyName] != nil && syncPeriods[appKeyName] != 0
+	deleteSyncFlag(instance)
+	done, ticker := registerSyncFlag(instance)
+	go sync.PeriodicSyncCheck(r.Client, instance, done, ticker)
 }
 
 func registerSyncFlag(instance *cdv1.Application) (chan bool, *time.Ticker) {
