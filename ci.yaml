@@ -14,7 +14,7 @@ spec:
     type: github
   jobs:
     preSubmit:
-      - image: golang:1.14
+      - image: golang:1.17
         name: test-code
         script: |
           make test
@@ -29,7 +29,7 @@ spec:
           branch:
             - main
     postSubmit:
-    - image: golang:1.14
+    - image: golang:1.17
       name: test-code
       script: |
         make test
