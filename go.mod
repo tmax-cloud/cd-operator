@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
 	github.com/evanphx/json-patch v4.9.0+incompatible
+	github.com/go-git/go-git/v5 v5.4.2
 	github.com/go-logr/logr v0.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/onsi/ginkgo v1.14.1
@@ -13,7 +14,6 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/sourcegraph/go-diff v0.6.1
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/tools v0.0.0-20200916195026-c9a70fc28ce3 // indirect
 	gopkg.in/robfig/cron.v2 v2.0.0-20150107220207-be2e0b0deed5
 	honnef.co/go/tools v0.0.1-2020.1.5 // indirect
