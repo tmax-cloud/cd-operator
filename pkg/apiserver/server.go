@@ -87,7 +87,7 @@ func New(cli client.Client, cfg *rest.Config, cache cache.Cache) *Server {
 // Start starts the server
 func (s *Server) Start() {
 	// Wait for the cache init
-	if cacheInit := s.cache.WaitForCacheSync(nil); !cacheInit {
+	if cacheInit := s.cache.WaitForCacheSync(context.Background()); !cacheInit {
 		log.Error(fmt.Errorf("cannot wait for cache init"), "")
 		os.Exit(1)
 	}
