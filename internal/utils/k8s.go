@@ -61,7 +61,7 @@ func Client(scheme *runtime.Scheme) (client.Client, error) {
 }
 
 // CreateOrPatchObject patches the object if it exists, and creates one if not
-func CreateOrPatchObject(obj, original, parent runtime.Object, cli client.Client, scheme *runtime.Scheme) error {
+func CreateOrPatchObject(obj, original, parent client.Object, cli client.Client, scheme *runtime.Scheme) error {
 	if obj == nil {
 		return fmt.Errorf("obj cannot be nil")
 	}

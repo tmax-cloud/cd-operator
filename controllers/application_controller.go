@@ -21,8 +21,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/operator-framework/operator-lib/status"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,7 +32,6 @@ import (
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/internal/utils"
 	"github.com/tmax-cloud/cd-operator/pkg/sync"
-	corev1 "k8s.io/api/core/v1"
 )
 
 // ApplicationReconciler reconciles a Application object
@@ -58,7 +58,7 @@ var (
 //+kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile reconciles Application
-func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	log := r.Log.WithValues("Application", req.NamespacedName)
 
@@ -84,16 +84,16 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	r.manageSyncRoutine(instance)
 
 	// New Condition default
-	cond := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
+	cond := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
 	if cond == nil {
-		cond = &status.Condition{
+		cond = &metav1.Condition{
 			Type:   cdv1.ApplicationConditionReady,
-			Status: corev1.ConditionFalse,
+			Status: metav1.ConditionFalse,
 		}
 	}
 
 	defer func() {
-		instance.Status.Conditions.SetCondition(*cond)
+		meta.SetStatusCondition(&instance.Status.Conditions, *cond)
 		p := client.MergeFrom(original)
 		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
 			log.Error(err, "")
@@ -105,22 +105,13 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	}
 
 	// Set secret
-	secretChanged := r.setSecretString(instance) // for WebhookSecret
+	r.setSecretString(instance) // for WebhookSecret
 
 	// Set webhook registered
-	webhookConditionChanged := r.setWebhookRegisteredCond(instance)
+	r.setWebhookRegisteredCond(instance)
 
 	// Set ready
-	readyConditionChanged := r.setReadyCond(instance)
-
-	// If conditions changed, update status
-	if secretChanged || webhookConditionChanged || readyConditionChanged {
-		p := client.MergeFrom(original)
-		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
-			log.Error(err, "")
-			return ctrl.Result{}, err
-		}
-	}
+	r.setReadyCond(instance)
 
 	instance.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
 	if err := sync.CheckSync(r.Client, instance, false); err != nil {
@@ -216,23 +207,19 @@ func deleteSyncFlag(instance *cdv1.Application) {
 }
 
 // Set status.secrets, return if it's changed or not
-func (r *ApplicationReconciler) setSecretString(instance *cdv1.Application) bool {
-	secretChanged := false
+func (r *ApplicationReconciler) setSecretString(instance *cdv1.Application) {
 	if instance.Status.Secrets == "" {
 		instance.Status.Secrets = utils.RandomString(20)
-		secretChanged = true
 	}
-
-	return secretChanged
 }
 
 // Set ready condition, return if it's changed or not
-func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) bool {
-	ready := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionReady)
+func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) {
+	ready := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
 	if ready == nil {
-		ready = &status.Condition{
+		ready = &metav1.Condition{
 			Type:   cdv1.ApplicationConditionReady,
-			Status: corev1.ConditionFalse,
+			Status: metav1.ConditionFalse,
 		}
 	}
 
@@ -242,9 +229,7 @@ func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) bool {
 	// if instance.Status.Secrets != "" && webhookRegistered != nil && (webhookRegistered.Status == corev1.ConditionTrue || webhookRegistered.Reason == cicdv1.IntegrationConfigConditionReasonNoGitToken) {
 	// 	ready.Status = corev1.ConditionTrue
 	// }
-	readyConditionChanged := instance.Status.Conditions.SetCondition(*ready)
-
-	return readyConditionChanged
+	meta.SetStatusCondition(&instance.Status.Conditions, *ready)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -255,12 +240,12 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // Set webhook-registered condition, return if it's changed or not
-func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Application) bool {
-	webhookRegistered := instance.Status.Conditions.GetCondition(cdv1.ApplicationConditionWebhookRegistered)
+func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Application) {
+	webhookRegistered := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionWebhookRegistered)
 	if webhookRegistered == nil {
-		webhookRegistered = &status.Condition{
+		webhookRegistered = &metav1.Condition{
 			Type:   cdv1.ApplicationConditionWebhookRegistered,
-			Status: corev1.ConditionFalse,
+			Status: metav1.ConditionFalse,
 		}
 	}
 
@@ -268,13 +253,12 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 	if instance.Spec.Source.Token == nil {
 		webhookRegistered.Reason = cdv1.ApplicationConditionReasonNoGitToken
 		webhookRegistered.Message = "Skipped to register webhook"
-		webhookRegisteredCondChanged := instance.Status.Conditions.SetCondition(*webhookRegistered)
-		return webhookRegisteredCondChanged
+		meta.SetStatusCondition(&instance.Status.Conditions, *webhookRegistered)
 	}
 
 	// Register only if the condition is false
-	if webhookRegistered.IsFalse() {
-		webhookRegistered.Status = corev1.ConditionFalse
+	if webhookRegistered.Status == metav1.ConditionFalse {
+		webhookRegistered.Status = metav1.ConditionFalse
 		webhookRegistered.Reason = ""
 		webhookRegistered.Message = ""
 
@@ -304,15 +288,13 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 					webhookRegistered.Reason = "webhookRegisterFailed"
 					webhookRegistered.Message = err.Error()
 				} else {
-					webhookRegistered.Status = corev1.ConditionTrue
+					webhookRegistered.Status = metav1.ConditionTrue
 					webhookRegistered.Reason = ""
 					webhookRegistered.Message = ""
 				}
 			}
 		}
-		webhookRegisteredCondChanged := instance.Status.Conditions.SetCondition(*webhookRegistered)
-		return webhookRegisteredCondChanged
+		meta.SetStatusCondition(&instance.Status.Conditions, *webhookRegistered)
 	}
-	webhookRegisteredCondChanged := instance.Status.Conditions.SetCondition(*webhookRegistered)
-	return webhookRegisteredCondChanged
+	meta.SetStatusCondition(&instance.Status.Conditions, *webhookRegistered)
 }

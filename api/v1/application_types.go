@@ -19,7 +19,6 @@ package v1
 import (
 	"context"
 
-	"github.com/operator-framework/operator-lib/status"
 	"github.com/tmax-cloud/cd-operator/internal/configs"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,8 +38,8 @@ const (
 
 // Condition keys for Application
 const (
-	ApplicationConditionReady             = status.ConditionType("ready")
-	ApplicationConditionWebhookRegistered = status.ConditionType("webhook-registered")
+	ApplicationConditionReady             = "ready"
+	ApplicationConditionWebhookRegistered = "webhook-registered"
 )
 
 // ApplicationConditionReasonNoGitToken is a Reason key
@@ -92,8 +91,8 @@ type ApplicationStatus struct {
 	// SyncStatus contains information about the application's current sync status
 	Sync SyncStatus `json:"sync,omitempty"`
 	// Conditions of IntegrationConfig
-	Conditions status.Conditions `json:"conditions"`
-	Secrets    string            `json:"secrets,omitempty"` // TODO 왜 필요해?
+	Conditions []metav1.Condition `json:"conditions"`
+	Secrets    string             `json:"secrets,omitempty"` // TODO 왜 필요해?
 }
 
 //+kubebuilder:object:root=true
