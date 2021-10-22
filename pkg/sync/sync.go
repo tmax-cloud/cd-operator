@@ -54,12 +54,27 @@ func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 		log.Error(err, "GetManifestURLList failed..")
 		return err
 	}
+	oldDeployResources, err := mgr.GetDeployResourceList(app)
+	if err != nil {
+		log.Error(err, "GetDeployResourceList failed")
+		return err
+	}
+
+	updatedDeployResources := make(map[string]*cdv1.DeployResource)
+
 	for _, url := range urls {
 		manifestRawobj, err := mgr.ObjectFromManifest(url, app)
 		if err != nil {
 			log.Error(err, "Get object from manifest failed..")
 			return err
 		}
+		updatedDeployResource, err := mgr.UpdateDeployResource(manifestRawobj, app)
+		if err != nil {
+			log.Error(err, "NewDeployResource failed..")
+			return err
+		}
+		updatedDeployResources[updatedDeployResource.Name] = updatedDeployResource
+
 		manifestModifiedObj, err := mgr.CompareDeployWithManifest(manifestRawobj)
 		if manifestModifiedObj == nil && err != nil {
 			log.Error(err, "Compare deployed resource with manifest failed..")
@@ -73,6 +88,16 @@ func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 			}
 		}
 	}
+
+	for _, oldDeployResource := range oldDeployResources.Items {
+		if updatedDeployResources[oldDeployResource.Name] == nil {
+			if err := mgr.DeleteDeployResource(&oldDeployResource); err != nil {
+				log.Error(err, "DeleteDeployResource failed..")
+				return err
+			}
+		}
+	}
+
 	if app.Spec.SyncPolicy.AutoSync {
 		app.Status.Sync.Status = cdv1.SyncStatusCodeSynced
 	}

@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/cluster"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,10 +40,14 @@ func (m *ManifestManager) GetManifestURLList(app *cdv1.Application) ([]string, e
 	repo := app.Spec.Source.GetRepository()
 	revision := app.Spec.Source.TargetRevision // branch, tag, sha..
 	path := app.Spec.Source.Path
+	gitToken, err := app.GetToken(m.Client)
+	if err != nil {
+		return nil, err
+	}
 
 	var manifestURLs []string
 
-	manifestURLs, err := recursivePathCheck(apiBaseURL, repo, path, revision, manifestURLs)
+	manifestURLs, err = recursivePathCheck(apiBaseURL, repo, path, revision, gitToken, manifestURLs)
 	if err != nil {
 		return nil, err
 	}
@@ -54,11 +55,19 @@ func (m *ManifestManager) GetManifestURLList(app *cdv1.Application) ([]string, e
 	return manifestURLs, nil
 }
 
-func recursivePathCheck(apiBaseURL, repo, path, revision string, manifestURLs []string) ([]string, error) {
+func recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manifestURLs []string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", apiBaseURL, repo, path, revision)
 
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
 	// Get download_url of manifest file
-	resp, err := http.Get(apiURL)
+	if gitToken != "" {
+		req.Header.Add("Authorization", gitToken)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Error(err, "http Get failed..")
 		return nil, err
@@ -91,7 +100,7 @@ func recursivePathCheck(apiBaseURL, repo, path, revision string, manifestURLs []
 		if downloadURLs[i].Type == "file" {
 			manifestURLs = append(manifestURLs, downloadURLs[i].DownloadURL)
 		} else if downloadURLs[i].Type == "dir" {
-			manifestURLs, err = recursivePathCheck(apiBaseURL, repo, downloadURLs[i].Path, revision, manifestURLs)
+			manifestURLs, err = recursivePathCheck(apiBaseURL, repo, downloadURLs[i].Path, revision, gitToken, manifestURLs)
 			if err != nil {
 				return nil, err
 			}
@@ -199,11 +208,6 @@ func (m *ManifestManager) ApplyManifest(exist bool, app *cdv1.Application, manif
 			return err
 		}
 	}
-
-	if err := m.createDeployResource(manifestObj, app); err != nil {
-		panic(err)
-	}
-
 	return nil
 }
 
@@ -220,41 +224,4 @@ func bytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 	}
 
 	return &unstructured.Unstructured{Object: unstrObj}, nil
-}
-
-func (m *ManifestManager) createDeployResource(unstObj *unstructured.Unstructured, app *cdv1.Application) error {
-	obj := &cdv1.DeployResource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
-			Namespace: app.Name,
-		},
-		Application: app.Name,
-		Spec: cdv1.DeployResourceSpec{
-			Name:      unstObj.GetName(),
-			Kind:      unstObj.GetKind(),
-			Namespace: unstObj.GetNamespace(),
-		},
-	}
-
-	if err := m.Client.Get(m.Context, types.NamespacedName{Name: app.Name}, &v1.Namespace{}); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-		if err := m.Client.Create(m.Context, &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: app.Name}}); err != nil {
-			panic(err)
-		}
-	}
-
-	if err := m.Client.Get(m.Context, types.NamespacedName{
-		Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName()),
-		Namespace: app.Name}, obj); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-		if err := m.Client.Create(m.Context, obj); err != nil {
-			panic(err)
-		}
-	}
-
-	return nil
 }
