@@ -40,6 +40,8 @@ spec:
           spec:
             description: DeployResourceSpec is a spec of deployed application's resource
             properties:
+              apiVersion:
+                type: string
               kind:
                 type: string
               name:
@@ -48,6 +50,7 @@ spec:
               namespace:
                 type: string
             required:
+            - apiVersion
             - kind
             - name
             - namespace

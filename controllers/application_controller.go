@@ -23,15 +23,19 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/operator-framework/operator-lib/status"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/internal/utils"
+	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
 	"github.com/tmax-cloud/cd-operator/pkg/sync"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 // ApplicationReconciler reconciles a Application object
@@ -68,6 +72,11 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			return ctrl.Result{}, nil
 		}
 		log.Error(err, "")
+		return ctrl.Result{}, err
+	}
+
+	if err := r.checkAppDestNamespace(instance); err != nil {
+		log.Error(err, "check app destination namespace failed..")
 		return ctrl.Result{}, err
 	}
 
@@ -123,9 +132,11 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	}
 
 	instance.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
-	if err := sync.CheckSync(r.Client, instance, false); err != nil {
-		log.Error(err, "")
-		return ctrl.Result{}, err
+	if instance.DeletionTimestamp == nil {
+		if err := sync.CheckSync(r.Client, instance, false); err != nil {
+			log.Error(err, "")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -157,25 +168,65 @@ func (r *ApplicationReconciler) handleFinalizer(instance *cdv1.Application) erro
 
 func (r *ApplicationReconciler) finalizeApp(instance *cdv1.Application) error {
 	deleteSyncFlag(instance)
+
+	if err := r.clearDeployedResources(instance); err != nil {
+		r.Log.Error(err, "Delete deployed resources failed..")
+		return err
+	}
+
+	if err := r.clearWebhook(instance); err != nil {
+		r.Log.Error(err, "Delete webhook failed..")
+		return err
+	}
+	return nil
+}
+
+// TODO: Namespace 처리 방안
+func (r *ApplicationReconciler) clearDeployedResources(instance *cdv1.Application) error {
+	mgr := manifestmanager.ManifestManager{Client: r.Client, Context: context.Background()}
+
+	deployedResourceList, err := mgr.GetDeployResourceList(instance)
+	if err != nil {
+		return err
+	}
+	for _, deployedResource := range deployedResourceList.Items {
+		if err := mgr.DeleteDeployResource(&deployedResource); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *ApplicationReconciler) clearWebhook(instance *cdv1.Application) error {
 	if instance.Spec.Source.Token != nil {
 		gitCli, err := utils.GetGitCli(instance, r.Client)
 		if err != nil {
-			r.Log.Error(err, "")
 			return err
 		}
 		hookList, err := gitCli.ListWebhook()
 		if err != nil {
-			r.Log.Error(err, "")
 			return err
 		}
 		for _, h := range hookList {
 			if h.URL == instance.GetWebhookServerAddress() {
 				r.Log.Info("Deleting webhook " + h.URL)
 				if err := gitCli.DeleteWebhook(h.ID); err != nil {
-					r.Log.Error(err, "")
 					return err
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) checkAppDestNamespace(instance *cdv1.Application) error {
+	if err := r.Client.Get(context.Background(), types.NamespacedName{Name: instance.Spec.Destination.Namespace}, &v1.Namespace{}); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		if err := r.Client.Create(context.Background(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: instance.Spec.Destination.Namespace}}); err != nil {
+			return err
 		}
 	}
 	return nil
