@@ -124,7 +124,7 @@ client-certificate: "./test_cert/tls.crt"
 				},
 			}
 
-			fakeCli := fake.NewFakeClientWithScheme(s, app, sec)
+			fakeCli := fake.NewClientBuilder().WithScheme(s).WithObjects(app, sec).Build()
 			config, err := GetApplicationClusterConfig(context.Background(), fakeCli, app)
 
 			if !c.expectedErrOccur {

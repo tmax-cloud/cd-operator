@@ -14,31 +14,33 @@ spec:
     type: github
   jobs:
     preSubmit:
-      - image: golang:1.14
+      - image: golang:1.17
         name: test-code
         script: |
           make test
         when:
           branch:
             - main
-      - image: golangci/golangci-lint:v1.32
+      - image: golang:1.17
         name: test-lint
         script: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.32
           golangci-lint run ./... -v -E gofmt -E golint -E gocyclo -E misspell --timeout 1h0m0s
         when:
           branch:
             - main
     postSubmit:
-    - image: golang:1.14
+    - image: golang:1.17
       name: test-code
       script: |
         make test
       when:
         branch:
         - main
-    - image: golangci/golangci-lint:v1.32
+    - image: golang:1.17
       name: test-lint
       script: |
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.32
         golangci-lint run ./... -v -E gofmt --timeout 1h0m0s
       when:
         branch:

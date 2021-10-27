@@ -24,8 +24,7 @@ func TestGetGitCli(t *testing.T) {
 	}
 	app.Status.Secrets = "kkkkkkkkkkkkkkkkkkkkkkkk"
 
-	fakeCli := fake.NewFakeClientWithScheme(s, app)
-
+	fakeCli := fake.NewClientBuilder().WithScheme(s).WithObjects(app).Build()
 	/* result*/
 	_, err := GetGitCli(app, fakeCli)
 
