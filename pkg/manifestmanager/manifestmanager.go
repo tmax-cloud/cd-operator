@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/cluster"
+	"github.com/tmax-cloud/cd-operator/pkg/httpclient"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
@@ -26,6 +27,7 @@ var log = logf.Log.WithName("manifest-manager")
 type ManifestManager struct {
 	Client client.Client
 	context.Context
+	httpclient.HTTPClient
 }
 
 type DownloadURL struct {
@@ -47,7 +49,7 @@ func (m *ManifestManager) GetManifestURLList(app *cdv1.Application) ([]string, e
 
 	var manifestURLs []string
 
-	manifestURLs, err = recursivePathCheck(apiBaseURL, repo, path, revision, gitToken, manifestURLs)
+	manifestURLs, err = m.recursivePathCheck(apiBaseURL, repo, path, revision, gitToken, manifestURLs)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +57,7 @@ func (m *ManifestManager) GetManifestURLList(app *cdv1.Application) ([]string, e
 	return manifestURLs, nil
 }
 
-func recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manifestURLs []string) ([]string, error) {
+func (m *ManifestManager) recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manifestURLs []string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", apiBaseURL, repo, path, revision)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
@@ -67,7 +69,7 @@ func recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manif
 		req.Header.Add("Authorization", gitToken)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := m.HTTPClient.Do(req)
 	if err != nil {
 		log.Error(err, "http Get failed..")
 		return nil, err
@@ -79,7 +81,7 @@ func recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manif
 		return nil, err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error(err, "Read response body failed..")
 		return nil, err
@@ -100,7 +102,7 @@ func recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manif
 		if downloadURLs[i].Type == "file" {
 			manifestURLs = append(manifestURLs, downloadURLs[i].DownloadURL)
 		} else if downloadURLs[i].Type == "dir" {
-			manifestURLs, err = recursivePathCheck(apiBaseURL, repo, downloadURLs[i].Path, revision, gitToken, manifestURLs)
+			manifestURLs, err = m.recursivePathCheck(apiBaseURL, repo, downloadURLs[i].Path, revision, gitToken, manifestURLs)
 			if err != nil {
 				return nil, err
 			}
@@ -111,13 +113,13 @@ func recursivePathCheck(apiBaseURL, repo, path, revision, gitToken string, manif
 }
 
 func (m *ManifestManager) ObjectFromManifest(url string, app *cdv1.Application) (*unstructured.Unstructured, error) {
-	resp, err := http.Get(url)
+	resp, err := m.HTTPClient.Get(url)
 	if err != nil {
 		log.Error(err, "http Get failed..")
 		return nil, err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error(err, "Read response body failed..")
 		return nil, err
@@ -161,7 +163,6 @@ func (m *ManifestManager) ObjectFromManifest(url string, app *cdv1.Application) 
 
 func (m *ManifestManager) CompareDeployWithManifest(manifestObj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	deployedObj := manifestObj.DeepCopy()
-
 	if err := m.Client.Get(m.Context, types.NamespacedName{
 		Namespace: deployedObj.GetNamespace(),
 		Name:      deployedObj.GetName()}, deployedObj); err != nil {
@@ -186,17 +187,15 @@ func (m *ManifestManager) CompareDeployWithManifest(manifestObj *unstructured.Un
 		return nil, err
 	}
 
-	bytedManifestObj, _ = manifestObj.MarshalJSON()
-
-	if string(bytedDeployedObj) != string(bytedManifestObj) {
-		log.Info("Deployed resource does not synced with manifests..")
+	if fmt.Sprintf("%v", deployedObj) != fmt.Sprintf("%v", manifestObj) {
+		log.Info("Deployed resource is not in-synced with manifests. Sync..")
 		return manifestObj, nil
 	}
 
 	return nil, nil
 }
 
-func (m *ManifestManager) ApplyManifest(exist bool, app *cdv1.Application, manifestObj *unstructured.Unstructured) error {
+func (m *ManifestManager) ApplyManifest(exist bool, manifestObj *unstructured.Unstructured) error {
 	if !exist {
 		log.Info("Create..")
 		if err := m.Client.Create(m.Context, manifestObj); err != nil {

@@ -43,7 +43,6 @@ func (h *handler) updateDeploy(w http.ResponseWriter, req *http.Request) {
 	reqID := utils.RandomString(10)
 	log := h.log.WithValues("request", reqID)
 
-	// Get ns/approvalName
 	vars := mux.Vars(req)
 
 	ns, nsExist := vars[apiserver.NamespaceParamKey]
@@ -52,7 +51,6 @@ func (h *handler) updateDeploy(w http.ResponseWriter, req *http.Request) {
 		_ = utils.RespondError(w, http.StatusBadRequest, "url is malformed")
 		return
 	}
-	// Get corresponding Approval object
 	app := &cdv1.Application{}
 	if err := h.k8sClient.Get(context.Background(), types.NamespacedName{Name: applicationName, Namespace: ns}, app); err != nil {
 		log.Info(err.Error())
