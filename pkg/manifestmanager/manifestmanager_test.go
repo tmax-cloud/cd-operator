@@ -1,13 +1,26 @@
 package manifestmanager
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"github.com/tmax-cloud/cd-operator/pkg/httpclient"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -21,22 +34,10 @@ type getManifestURLTestCase struct {
 	path           string
 	targetRevision string
 
-	expectedErrOccur bool
-	expectedErrMsg   string
-	expectedResult   []string
+	expectedStatusCode int
+	expectedErrOccur   bool
+	expectedResult     []string
 }
-
-// type applyManifestTestCase struct {
-// 	repoURL        string
-// 	path           string
-// 	targetRevision string
-// 	destName       string
-// 	destNamespace  string
-
-// 	isDefaultCluster bool
-
-// 	// clusterSecret
-// }
 
 func TestGetManifestURL(t *testing.T) {
 	// Set loggers
@@ -44,39 +45,42 @@ func TestGetManifestURL(t *testing.T) {
 		logrus.SetLevel(logrus.InfoLevel)
 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	}
-	var m ManifestManager
-	// https://github.com/tmax-cloud/cd-operator.git
-	// api.github.com/repos/argoproj/argocd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=master
+
+	testBody := map[string]string{
+		"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook?ref=main":       `[{"name":"guestbook-test-svc.yaml","path":"guestbook/guestbook-test-svc.yaml","sha":"e8a4a27fbae4042ba3428098c0b899f3665c39e4","size":141,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-test-svc.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-test-svc.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/e8a4a27fbae4042ba3428098c0b899f3665c39e4","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-test-svc.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-test-svc.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/e8a4a27fbae4042ba3428098c0b899f3665c39e4","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-test-svc.yaml"}},{"name":"guestbook-ui-deployment.yaml","path":"guestbook/guestbook-ui-deployment.yaml","sha":"8a0975e363539eacfba296559ad6385cbedd1245","size":389,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-deployment.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-deployment.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/8a0975e363539eacfba296559ad6385cbedd1245","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-deployment.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-deployment.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/8a0975e363539eacfba296559ad6385cbedd1245","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-deployment.yaml"}},{"name":"guestbook-ui-svc.yaml","path":"guestbook/guestbook-ui-svc.yaml","sha":"fa173a2b2e84c2a3566a1572bbc65a72155b58d1","size":145,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-svc.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/fa173a2b2e84c2a3566a1572bbc65a72155b58d1","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/fa173a2b2e84c2a3566a1572bbc65a72155b58d1","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-svc.yaml"}},{"name":"test","path":"guestbook/test","sha":"7eb2aed0d0aadb4fd268b7e7921e9eb9c61d2a1e","size":0,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/tree/main/guestbook/test","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/trees/7eb2aed0d0aadb4fd268b7e7921e9eb9c61d2a1e","download_url":null,"type":"dir","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/trees/7eb2aed0d0aadb4fd268b7e7921e9eb9c61d2a1e","html":"https://github.com/tmax-cloud/cd-example-apps/tree/main/guestbook/test"}}]`,
+		"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test?ref=main":  `[{"name":"guestbook-testui-deployment.yaml","path":"guestbook/test/guestbook-testui-deployment.yaml","sha":"28322ec77cc65392aee4a6ea312a7a8e67e04a71","size":399,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test/guestbook-testui-deployment.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/test/guestbook-testui-deployment.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/28322ec77cc65392aee4a6ea312a7a8e67e04a71","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/test/guestbook-testui-deployment.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test/guestbook-testui-deployment.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/28322ec77cc65392aee4a6ea312a7a8e67e04a71","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/test/guestbook-testui-deployment.yaml"}}]`,
+		"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/deployment.yaml?ref=main": `{"name":"deployment.yaml","path":"deployment.yaml","sha":"2d0f44780d8fe8108524a77f96d10da2231e1e90","size":345,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/deployment.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/deployment.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/2d0f44780d8fe8108524a77f96d10da2231e1e90","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/deployment.yaml","type":"file","content":"YXBpVmVyc2lvbjogYXBwcy92MQpraW5kOiBEZXBsb3ltZW50Cm1ldGFkYXRh\nOgogIG5hbWU6IHRlc3QtZGVwbG95LWZyb20tZ2l0CnNwZWM6CiAgdGVtcGxh\ndGU6CiAgICBtZXRhZGF0YToKICAgICAgbmFtZTogbmdpbngKICAgICAgbGFi\nZWxzOgogICAgICAgIGFwcHM6IHRlc3QtYXBwCiAgICBzcGVjOgogICAgICBj\nb250YWluZXJzOgogICAgICAgIC0gbmFtZTogbmdpbngtY29udGFpbmVyCiAg\nICAgICAgICBpbWFnZTogbmdpbngKICAgICAgICAgIHBvcnRzOgogICAgICAg\nICAgICAtIGNvbnRhaW5lclBvcnQ6IDgwCiAgc2VsZWN0b3I6CiAgICBtYXRj\naExhYmVsczoKICAgICAgYXBwczogdGVzdC1hcHAK\n","encoding":"base64","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/deployment.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/2d0f44780d8fe8108524a77f96d10da2231e1e90","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/deployment.yaml"}}`,
+	}
+
+	mockClient := &httpclient.MockHTTPClient{}
+	m := &ManifestManager{HTTPClient: mockClient}
 
 	tc := map[string]getManifestURLTestCase{
 		"githubValidURLDir": {
-			repoURL:          "https://github.com/tmax-cloud/cd-example-apps",
-			path:             "guestbook",
-			targetRevision:   "main",
-			expectedErrOccur: false,
-			expectedResult:   []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-test-svc.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-deployment.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/test/guestbook-testui-deployment.yaml"},
+			repoURL:            "https://github.com/tmax-cloud/cd-example-apps",
+			path:               "guestbook",
+			targetRevision:     "main",
+			expectedStatusCode: 200,
+			expectedErrOccur:   false,
+			expectedResult:     []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-test-svc.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-deployment.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml", "https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/test/guestbook-testui-deployment.yaml"},
 		},
 		"githubValidURLFile": {
-			repoURL:          "https://github.com/tmax-cloud/cd-example-apps",
-			path:             "deployment.yaml",
-			targetRevision:   "main",
-			expectedErrOccur: false,
-			expectedResult:   []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/deployment.yaml"},
+			repoURL:            "https://github.com/tmax-cloud/cd-example-apps",
+			path:               "deployment.yaml",
+			targetRevision:     "main",
+			expectedStatusCode: 200,
+			expectedErrOccur:   false,
+			expectedResult:     []string{"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/deployment.yaml"},
 		},
 		"githubInvalidURL": {
-			repoURL:          "https://github.com/tmax-cloud/cd-example-apps-fake",
-			path:             "guestbook",
-			targetRevision:   "main",
-			expectedErrOccur: true,
-			expectedErrMsg:   "404 Not Found",
+			repoURL:        "https://github.com/tmax-cloud/cd-example-apps-fake",
+			path:           "guestbook",
+			targetRevision: "main",
+
+			expectedStatusCode: 404,
+			expectedErrOccur:   true,
 		},
 		// TODO: tc for gitlab & other apiURL
-		// "gitlabValidURL": {
-
-		// },
-		// "gitlabInvalidURL": {
-
-		// },
 	}
 
 	for name, c := range tc {
@@ -90,10 +94,15 @@ func TestGetManifestURL(t *testing.T) {
 					},
 				},
 			}
+			mockClient.DoFunc = func(r *http.Request) (*http.Response, error) {
+				return &http.Response{
+					Body:       io.NopCloser(strings.NewReader(testBody[r.URL.String()])),
+					StatusCode: c.expectedStatusCode,
+				}, nil
+			}
 			result, err := m.GetManifestURLList(app)
 			if c.expectedErrOccur {
 				require.Error(t, err)
-				require.Equal(t, c.expectedErrMsg, err.Error())
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, c.expectedResult, result)
@@ -102,161 +111,285 @@ func TestGetManifestURL(t *testing.T) {
 	}
 }
 
-// func TestApplyManifest(t *testing.T) {
-// 	// Set loggers
-// 	if os.Getenv("CI") != "true" {
-// 		logrus.SetLevel(logrus.InfoLevel)
-// 		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
-// 	}
+type objectFromManifestTestCase struct {
+	url                  string
+	body                 string
+	destinationName      string
+	destinationNameSpace string
 
-// 	tc := map[string]applyManifestTestCase{
-// 		"defaultCluster": {
-// 			repoURL:        "https://github.com/tmax-cloud/cd-example-apps",
-// 			path:           "guestbook/guestbook-ui-svc.yaml",
-// 			targetRevision: "main",
-// 			destName:       "",
-// 			destNamespace:  "test",
+	expectedErrOccur bool
+	expectedErrMsg   string
+	expectedRawObj   *unstructured.Unstructured
+}
 
-// 			isDefaultCluster: true,
-// 		},
-// 		// 		"externalCluster": {
-// 		// 			repoURL:        "https://github.com/tmax-cloud/cd-example-apps",
-// 		// 			path:           "guestbook/guestbook-ui-svc.yaml",
-// 		// 			targetRevision: "main",
-// 		// 			destName:       "testDestination",
-// 		// 			destNamespace:  "test",
-// 		// 			clusterSecret: clusterSecret{
-// 		// 				secretName: "testDestination",
-// 		// 				value: `apiVersion: v1
-// 		// clusters:
-// 		// - cluster:
-// 		//     certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMrZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRJeE1Ea3dNVEE1TWpJeU5sb1hEVE14TURnek1EQTVNakl5Tmxvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTWhkCkNPRmNLVXdVejExZzVtUGZUVFl6Y0syUi9mdjRzOVRMSzBqaURxQ0VJVncrRG0rOWdEcDVtOFRTQ2k2Y3V3aE0KMFBOQW5KbFh3VVkybWVnRm1FcGZLeHhHR2hwbmk4dWN0eXAwZk50UDhCYmsySlZRdk1keTkwMzRKNnpFS0hScgp4YW54SWFYNE9YTzIyQUg0RzlqSVhvTUFxNHQyWFphNFAyRUxoejkrOW1yN2JTbWZzSFBzazRBYU1TUUlTUjVVClhESjg0dG1vaHhXRFUxbXplci85V2gweFgrbFI0Um54bUhMTmdTZEgzVlZrcFE3Z2F2UDR6MHhXTEtweDFsTkoKRk1DS1FISlpIeFBRaGFZamUrdERJUldzTlAyMjU2blhkVTNsVjRCbGF1M0JPdkJDSmpBOUpxa0pCdVNGNzlPZgpqYmd5amNFZDJudmtoTHBwb2s4Q0F3RUFBYU5DTUVBd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZOWGhJZ2t3ZS92MlZ3NFJpWHN0c1UyZHNpVCtNQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFER2xkM0JkODB4eUQ3MDJsLzFrV21zWHMxRWlUZXgycDJLU1VFMHRobzlXL3FrWDBQdwo1ZTNOcFc4QmZpdFA2VXFMMTd4WmVuMThDa0p6NXdyOUtsRW10eE5KQWdCSXJGS0M0REJpdmxrblU1empRbk9YCmNTbUFTelpPMktIeFJMcU5WRFNQTU5VTHp6NVZEUzUwRklmeWtwaGduYTk2M0Fyc2Q2cFVjRDljMzdlV1RJYjgKR2ZSQ1BCdlJ2dEZ6Qk1nMHpVWWRrWW1iMXNzM3U2WEc4QVNHYVVNUnZoK0ord0tFNDZydFNTbE5YOFRwVHpFbgptWDFrYXl5TjFFMUxsc1RLZCtsaE5ORERxODM5VGsxaVp6MEd1cE10b0JiY2luOVZocTRzYmdvV1h1MHVDVkw5CkJaQkI5eU5MaG1jR0tqRWREQ3RsZnF3Q1RKL240QnA1aGJPMAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
-// 		//     server: https://172.22.11.2:6443
-// 		//   name: kubernetes
-// 		// contexts:
-// 		// - context:
-// 		//     cluster: kubernetes
-// 		//     user: kubernetes-admin
-// 		//   name: kubernetes-admin@kubernetes
-// 		// current-context: kubernetes-admin@kubernetes
-// 		// kind: Config
-// 		// preferences: {}
-// 		// users:
-// 		// - name: kubernetes-admin
-// 		//   user:
-// 		//     client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFekNDQWZ1Z0F3SUJBZ0lJVFd5amF6Tm05OVl3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TVRBNU1ERXdPVEl5TWpaYUZ3MHlNakE1TURFd09USXlNamhhTURReApGekFWQmdOVkJBb1REbk41YzNSbGJUcHRZWE4wWlhKek1Sa3dGd1lEVlFRREV4QnJkV0psY201bGRHVnpMV0ZrCmJXbHVNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQXBHTnZXelVQTS8rdmdGam4KWTlPQklISm52c2dSVWZLcDkxbGc0MHo4TnZza1ZFbHhqeEo0cWo5UzZyYzM2ZGdYdDgrcTFROTdib3Z0YU1IdgpBVkdMb0pDUlErcXlGVlVESkRnbWl2WEZmeVNMYW1OTFZqekdoRnVsNTdHdzlyNWRCbXRnQzVvR1VobVJLc24xCmg0dXFwWUFIMjhxOFV4NTBXaWw3Z1ozZjU3d0ZGZVJYSHl4bWo1bDhKd3NwQ3FPMWRtVlZtSlFLdnNWSDVYQW0KOGtTNUhFSnVMNmpNTlRqZWc3QjlZZ1VmeDk0VDFTcHJvNEtGMXdVeTdSczlhTThMTEpVS1g2UzYzSXR3bU01dwpVVTN0NnFZSXFGeGZCb2Q4Z3ByVVJsRmh4MHZCd3dNc2VSZlVnY2RtUEhwV3ZoakdhMFZFM1BIdDd4U0ZnU2N6CithTjNDd0lEQVFBQm8wZ3dSakFPQmdOVkhROEJBZjhFQkFNQ0JhQXdFd1lEVlIwbEJBd3dDZ1lJS3dZQkJRVUgKQXdJd0h3WURWUjBqQkJnd0ZvQVUxZUVpQ1RCNysvWlhEaEdKZXkyeFRaMnlKUDR3RFFZSktvWklodmNOQVFFTApCUUFEZ2dFQkFBTDNlNUVjUGowMGhTR0ozbmt2K2lQZnNWdGpDZFhQaVAzeDNISld2amZsbUlyY3Q5SFovKzNqClVid2diV0syYStUSE16QjMyMGdIdDFFUlk0VEV4dWVobXdGY0o0Ym5VWXZ5OHdiZnVSWHh6a2JXcnJIbWRzN1cKRTZ4bllDZVZKSXRyRGZCUWdldDFEWnY5aGdUaEhBdDV1c2FnaTVHNmZ5MzhBYXFTTk5EVTk4VXFSa1pVcUJRawphOG9VSTRxUU5YenFmZWptVm0wcWdxNjI3QWJ6SmlOZnNjMGJqOVlaT05VdkdTdGlUOUZ5eTQrWEpkNzc3RkhYCjZVdGdKWlJFL040OUEyT2JIWkdQWWFrSDl0L1BrUWhlcTduVVhiWGFHL3NZQ1A0YnRwY3F4bzgrZUJMSHpUTlMKTUxITE5aNlh3ZnVIRHk0T2hmYk1WUCs4Wk1iNzI0VT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
-// 		//     client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBcEdOdld6VVBNLyt2Z0Zqblk5T0JJSEpudnNnUlVmS3A5MWxnNDB6OE52c2tWRWx4Cmp4SjRxajlTNnJjMzZkZ1h0OCtxMVE5N2JvdnRhTUh2QVZHTG9KQ1JRK3F5RlZVREpEZ21pdlhGZnlTTGFtTkwKVmp6R2hGdWw1N0d3OXI1ZEJtdGdDNW9HVWhtUktzbjFoNHVxcFlBSDI4cThVeDUwV2lsN2daM2Y1N3dGRmVSWApIeXhtajVsOEp3c3BDcU8xZG1WVm1KUUt2c1ZINVhBbThrUzVIRUp1TDZqTU5UamVnN0I5WWdVZng5NFQxU3ByCm80S0Yxd1V5N1JzOWFNOExMSlVLWDZTNjNJdHdtTTV3VVUzdDZxWUlxRnhmQm9kOGdwclVSbEZoeDB2Qnd3TXMKZVJmVWdjZG1QSHBXdmhqR2EwVkUzUEh0N3hTRmdTY3orYU4zQ3dJREFRQUJBb0lCQUVVQkVGOWkyR3psYVZBaApBWkJmMmhZNnI5M2ZzWldLblZvZEJKU2xYa0hlRGhQcmVHV3NSVWFCcWxhb2Jpb1U4Vy9SRms2MVh3UzZhLy9MCldINWZNcE5GM0JSOFVpQ3VQTkZaV0tTQUlsVUtqQk11ZHhOT0U2Ni9vZGF1T2pCNUhDZHpyeTl2aWpPd1U4VjQKWFQ1Mm5EMDRqeFB0K0R1VHp4ZUJ6anhNZnc2UXEvdTRMcWNDT0tsdVp3b2xIWkQvUGo3QmZxQmxSQXpPYVNLNQppUTI3RjNDVkdZZ1NtaHd4ZG9idnFWTitBQkxMbkI2VUdmbVFIbEMwZXJUVW5CK25NQlBaeERHWGcwMVpKS3dECkx4RWJqczJub2c3REtybWhTZEJndDNsdXp6UU1XZHJJMCswU2ZxOGlBeVBMVEExRVRNdW4rUDlrRGRreGdQMGUKZlhmY2o2RUNnWUVBeWp1dkVqTlhBRXhTbUFoRjI1R3FOUzFuMjA3cHJZRDlyZE1QTnh3K3prWWhwb3dONWI4egp5bzhkeE9xYXpYbThSMW1CbStYNVk1Q25jV0VrTlNEMXBnS1ZERWdNaUVYV1ZGM1hpY2UzZE8ra2hTWm1yalJzClhuRDlBOGhBMlpsRGo5Nm9KU0pqajkzY3FUd0ZYVmwyNFNrNDMrMURUMWJYTDdTN0h4QW5mK01DZ1lFQTBCZjYKVXN0VWRuQjVZU1dHZEY2T3QwTmorZnRQKzZrNEZ2c2xOd05OcDBld201ZnovY3JXQlljZUhoeDhlTCs5TWcvNAp3czcrQ0ljU0d5cklVOUpxNXRhM0lPSUQxblJGcnYwN1V4MGRXYTcwb3lTMGhLK0dtb0lCZjUvY09sdUZ2NWE0CmxPWGxmMkdpbmRSWUJDbnloUVRQU1hQLzNZdWxTL3dJK0c3dGhMa0NnWUJ5SjlLaFVYMncyMlJjRVg5dGZBSTYKVmxFanlKMjdwTzZOcW5BU1NjMWlIdEJyOU83N1d6emZBSDVyWTRyU3BmOFR2NENjQWVzT3V0N3A3MDNDOThIeQpYYzdJeWZyWkNhTDhxS1E4VUJKTTNlRmVqOWl5U1VGSzVqak1ZOFBIa081RVRnbFlQTnM2b0tBb240cmZzTnFjCkt1ckI3R3BzWkxhL1pTT2pXemtReFFLQmdRQ3crVE55NW1uV3NLRUo5WmY3cjg5QUhKZ1NLYUZFTGczOXZXbFEKK0FZNmxjV2xEZjM3Z1YyekpjNS9YVXFlaHJLb3VOeWZFTnNLOVpSNGRsSVl0NE1pL3NpUHRxZjg0clhBdEt5WAphdE5qU2wvVHY0dW1ySUNWTnF0L2xyejlCSWtpLzFQTGpoazMxQmt3a1Q2cGkrTXRMWUg4dmlLRWtCYnNJRlNnCnMvWmNRUUtCZ0FoeGtndjh5ZHlCWEYzMzJtTUpBVXdUTTBGdEhxbFpobHhYS29yakNBT1lVODBSVnN1Qlo5eW0KOTlvNWY2NzhDWEFMZ0NtM2lmRHVaMUk3TlhIaTZjZ3VSbTN6TVVPd2RiMFpURDQxRE5DdmJZMUY0WnppdnY0aApJMTBSd3ZGakNnc0VUYVN2U2ZHRUZuWXJyVTYyL1Z6Uis3ZE5nOTBMaHlaY1dzR2FzMGs1Ci0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
-// 		// `,
-// 		// 			},
-// 		// },
-// 	}
+func TestObjectFromManifest(t *testing.T) {
+	// Set loggers
+	if os.Getenv("CI") != "true" {
+		logrus.SetLevel(logrus.InfoLevel)
+		ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	}
 
-// 	s := runtime.NewScheme()
-// 	utilruntime.Must(cdv1.AddToScheme(s))
-// 	utilruntime.Must(v1.AddToScheme(s))
-// 	server := newTestServer()
+	s := runtime.NewScheme()
+	utilruntime.Must(v1.AddToScheme(s))
+	utilruntime.Must(cdv1.AddToScheme(s))
 
-// 	for name, c := range tc {
-// 		t.Run(name, func(t *testing.T) {
-// 			err := createFakeCert()
-// 			require.NoError(t, err)
+	mockClient := &httpclient.MockHTTPClient{}
+	m := &ManifestManager{HTTPClient: mockClient}
 
-// 			defer func() {
-// 				err = removeFakeCert()
-// 				require.NoError(t, err)
-// 			}()
-// 			app := &cdv1.Application{
-// 				ObjectMeta: metav1.ObjectMeta{
-// 					Name:      "test",
-// 					Namespace: "test",
-// 				},
-// 				Spec: cdv1.ApplicationSpec{
-// 					Source: cdv1.ApplicationSource{
-// 						RepoURL:        c.repoURL,
-// 						Path:           c.path,
-// 						TargetRevision: c.targetRevision,
-// 					},
-// 					Destination: cdv1.ApplicationDestination{
-// 						Name:      c.destName,
-// 						Namespace: c.destNamespace,
-// 					},
-// 				},
-// 			}
+	server := newTestServer()
 
-// 			var fakeCli client.Client
-// 			if !c.isDefaultCluster {
-// 				sec := &v1.Secret{
-// 					ObjectMeta: metav1.ObjectMeta{
-// 						Name:      c.destName + "-kubeconfig",
-// 						Namespace: app.Namespace,
-// 					},
-// 					StringData: map[string]string{
-// 						// "value": c.value,
-// 					},
-// 				}
-// 				fakeCli = fake.NewFakeClientWithScheme(s, app, sec)
-// 			} else {
-// 				fakeCli = fake.NewFakeClientWithScheme(s, app)
-// 			}
-// 			m := ManifestManager{Client: fakeCli}
-// 			err = m.ApplyManifest(server.URL, app)
-// 			assert.Equal(t, err, nil)
-// 		})
-// 	}
-// 	//TODO : 아웃풋인 DeployResource을 활용해서 Test 짜기
-// 	//TODO : resource 삭제하는 로직 필요
-// 	//TODO : team 환경 이용하여 테스트 함. 수정 필요
-// }
+	tc := map[string]objectFromManifestTestCase{
+		"default": {
+			url: "validURL",
+			body: `apiVersion: v1
+kind: Service
+metadata:
+  name: guestbook-ui
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: guestbook-ui`,
+			destinationName:      "",
+			destinationNameSpace: "",
+			expectedErrOccur:     false,
+			expectedRawObj:       &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+		},
+		"otherNameSpace": {
+			url: "validURL",
+			body: `apiVersion: v1
+kind: Service
+metadata:
+  name: guestbook-ui
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: guestbook-ui`,
+			destinationName:      "",
+			destinationNameSpace: "test",
+			expectedErrOccur:     false,
+			expectedRawObj:       &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+		},
+		"otherCluster": {
+			url: "validURL",
+			body: `apiVersion: v1
+kind: Service
+metadata:
+  name: guestbook-ui
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: guestbook-ui`,
+			destinationName:      "test",
+			destinationNameSpace: "test",
+			expectedErrOccur:     false,
+			expectedRawObj:       &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+		},
+		"noExistCluster": {
+			url: "validURL",
+			body: `apiVersion: v1
+kind: Service
+metadata:
+  name: guestbook-ui
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: guestbook-ui`,
+			destinationName:      "test2",
+			destinationNameSpace: "test",
+			expectedErrOccur:     true,
+			expectedErrMsg:       "unable to find cluster secret test2-kubeconfig: secrets \"test2-kubeconfig\" not found",
+		},
+	}
 
-// func newTestServer() *httptest.Server {
-// 	router := mux.NewRouter()
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			app := &cdv1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+				},
+				Spec: cdv1.ApplicationSpec{
+					Destination: cdv1.ApplicationDestination{
+						Name:      c.destinationName,
+						Namespace: c.destinationNameSpace,
+					},
+				},
+			}
 
-// 	router.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-// 		defer func() {
-// 			_ = req.Body.Close()
-// 		}()
-// 		// yaml은 tab 말고 space로만 구문 가능
-// 		data := `apiVersion: v1
-// kind: Service
-// metadata:
-//   name: guestbook-ui-test
-// spec:
-//   ports:
-//   - port: 80
-//     targetPort: 80
-//   selector:
-//     app: guestbook-ui
+			mockClient.GetFunc = func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: io.NopCloser(strings.NewReader(c.body)),
+				}, nil
+			}
 
-// `
-// 		_, err := io.WriteString(w, data)
-// 		if err != nil {
-// 			return
-// 		}
-// 	})
+			sec := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kubeconfig",
+					Namespace: app.Namespace,
+				},
+				StringData: map[string]string{
+					"value": `apiVersion: v1
+clusters:
+- cluster:
+    server: ` + server.URL + `
+  name: test
+contexts:
+- context:
+    cluster: test
+    user: test-admin
+  name: test-admin@test
+current-context: test-admin@test
+kind: Config
+preferences: {}
+users:
+- name: test-admin
+`,
+				},
+			}
 
-// 	return httptest.NewServer(router)
-// }
+			m.Client = fake.NewClientBuilder().WithScheme(s).WithObjects(app, sec).Build()
+			manifestRawObj, err := m.ObjectFromManifest(c.url, app)
+			if c.expectedErrOccur {
+				require.Equal(t, c.expectedErrMsg, err.Error())
+			} else {
+				expectedRaw, _ := c.expectedRawObj.MarshalJSON()
+				manifestRaw, _ := manifestRawObj.MarshalJSON()
+				require.Equal(t, expectedRaw, manifestRaw)
+				require.NoError(t, err)
+			}
+		})
+	}
+}
 
-// TODO: 따로 패키지로 빼기
-// func createFakeCert() error {
-// 	if err := os.Mkdir("./test_cert/", os.ModePerm); err != nil {
-// 		return err
-// 	}
-// 	if err := ioutil.WriteFile("./test_cert/ca.crt", []byte("test"), 0644); err != nil {
-// 		return err
-// 	}
-// 	if err := ioutil.WriteFile("./test_cert/tls.key", []byte("test"), 0644); err != nil {
-// 		return err
-// 	}
-// 	if err := ioutil.WriteFile("./test_cert/tls.crt", []byte("test"), 0644); err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
+type compareDeployWithTestCase struct {
+	manifestObj *unstructured.Unstructured
+	deployedObj *unstructured.Unstructured
 
-// func removeFakeCert() error {
-// 	if err := os.RemoveAll("./test_cert"); err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
+	expectedObj      *unstructured.Unstructured
+	expectedErrOccur bool
+	expectedErrMsg   string
+}
+
+func TestCompareDeployWithManifest(t *testing.T) {
+	tc := map[string]compareDeployWithTestCase{
+		"notFound": {
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+			deployedObj: nil,
+
+			expectedObj:      &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+			expectedErrOccur: true,
+			expectedErrMsg:   `services "guestbook-ui" not found`,
+		},
+		"inSync": {
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+			deployedObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+
+			expectedObj:      nil,
+			expectedErrOccur: false,
+		},
+		"outSync": {
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+			deployedObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 8080}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+
+			expectedObj:      &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"creationTimestamp": interface{}(nil), "name": "guestbook-ui", "namespace": "test", "resourceVersion": "999"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}, "status": map[string]interface{}{"loadBalancer": map[string]interface{}{}}}},
+			expectedErrOccur: false,
+		},
+	}
+
+	s := runtime.NewScheme()
+	utilruntime.Must(v1.AddToScheme(s))
+	utilruntime.Must(cdv1.AddToScheme(s))
+
+	m := &ManifestManager{Context: context.Background()}
+
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			if c.deployedObj != nil {
+				m.Client = fake.NewClientBuilder().WithScheme(s).WithObjects(c.deployedObj).Build()
+			} else {
+				m.Client = fake.NewClientBuilder().WithScheme(s).Build()
+			}
+			manifestObj, err := m.CompareDeployWithManifest(c.manifestObj)
+
+			if c.expectedErrOccur {
+				require.Equal(t, c.expectedErrMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, c.expectedObj, manifestObj)
+		})
+	}
+}
+
+type applyManifestTestCase struct {
+	exist       bool
+	manifestObj *unstructured.Unstructured
+
+	expectedErrOccur bool
+	expectedErrMsg   string
+}
+
+func TestApplyManifest(t *testing.T) {
+	tc := map[string]applyManifestTestCase{
+		"createSuccess": {
+			exist:       false,
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "newObj", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+
+			expectedErrOccur: false,
+		},
+		"createFail": {
+			exist:       false,
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "metadata": map[string]interface{}{"name": "newObj", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+
+			expectedErrOccur: true,
+			expectedErrMsg:   "Object 'Kind' is missing in 'unstructured object has no kind'",
+		},
+		"updateSuccess": {
+			exist:       true,
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"creationTimestamp": interface{}(nil), "name": "existObj", "namespace": "test", "resourceVersion": "999"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}, "status": map[string]interface{}{"loadBalancer": map[string]interface{}{}}}},
+
+			expectedErrOccur: false,
+		},
+		"updateFail": {
+			exist:       true,
+			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"creationTimestamp": interface{}(nil), "name": "existObj", "namespace": "test", "resourceVersion": "999"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}, "status": map[string]interface{}{"loadBalancer": map[string]interface{}{}}}},
+
+			expectedErrOccur: true,
+			expectedErrMsg:   "Operation cannot be fulfilled on services \"existObj\": object was modified",
+		},
+	}
+
+	s := runtime.NewScheme()
+	utilruntime.Must(v1.AddToScheme(s))
+	utilruntime.Must(cdv1.AddToScheme(s))
+
+	existObj := &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"creationTimestamp": interface{}(nil), "name": "existObj", "namespace": "test", "resourceVersion": "999"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 8080}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}, "status": map[string]interface{}{"loadBalancer": map[string]interface{}{}}}}
+
+	m := &ManifestManager{Context: context.Background()}
+	m.Client = fake.NewClientBuilder().WithScheme(s).WithObjects(existObj).Build()
+
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			err := m.ApplyManifest(c.exist, c.manifestObj)
+			if c.expectedErrOccur {
+				require.Equal(t, c.expectedErrMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func newTestServer() *httptest.Server {
+	router := mux.NewRouter()
+
+	return httptest.NewServer(router)
+}

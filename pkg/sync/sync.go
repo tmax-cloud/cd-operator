@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"time"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
@@ -48,7 +49,7 @@ func PeriodicSyncCheck(cli client.Client, app *cdv1.Application, done chan bool,
 // TODO: resource 일단 다 배포하고 실패한 resource들 error를 array로
 func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 	log.Info("Checking Sync status...")
-	mgr := manifestmanager.ManifestManager{Client: cli, Context: context.Background()}
+	mgr := manifestmanager.ManifestManager{Client: cli, Context: context.Background(), HTTPClient: http.DefaultClient}
 	urls, err := mgr.GetManifestURLList(app)
 	if err != nil {
 		log.Error(err, "GetManifestURLList failed..")
@@ -82,7 +83,7 @@ func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 		}
 		if manifestModifiedObj != nil && (app.Spec.SyncPolicy.AutoSync || forced) {
 			exist := (err == nil)
-			if err := mgr.ApplyManifest(exist, app, manifestModifiedObj); err != nil {
+			if err := mgr.ApplyManifest(exist, manifestModifiedObj); err != nil {
 				log.Error(err, "Apply manifest failed..")
 				return err
 			}
