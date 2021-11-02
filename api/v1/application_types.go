@@ -90,9 +90,9 @@ type ApplicationSpec struct {
 type ApplicationStatus struct {
 	// SyncStatus contains information about the application's current sync status
 	Sync SyncStatus `json:"sync,omitempty"`
-	// Conditions of IntegrationConfig
+	// Conditions of Application
 	Conditions []metav1.Condition `json:"conditions"`
-	Secrets    string             `json:"secrets,omitempty"` // TODO 왜 필요해?
+	Secrets    string             `json:"secrets,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -125,6 +125,11 @@ type ApplicationSource struct {
 	// In case of Git, this can be commit, tag, or branch. If omitted, will equal to HEAD.
 	// In case of Helm, this is a semver tag for the Chart's version.
 	TargetRevision string `json:"targetRevision,omitempty"`
+	// Type specifies the type of the application's source
+	// +kubebuilder:validation:Enum:=PlainYAML;Helm
+	Type ApplicationSourceType `json:"type,omitempty"`
+	// Helm holds helm specific options
+	Helm *ApplicationSourceHelm `json:"helm,omitempty"`
 	// Token is a token for accessing the remote git server. It can be empty, if you don't want to register a webhook
 	// to the git server
 	Token *GitToken `json:"token,omitempty"`
@@ -179,18 +184,24 @@ type ApplicationDestination struct {
 	Name string `json:"name,omitempty"`
 }
 
-// TODO
 // ApplicationSourceType specifies the type of the application's source
 type ApplicationSourceType string
 
 const (
 	ApplicationSourceTypePlainYAML ApplicationSourceType = "PlainYAML"
 	ApplicationSourceTypeHelm      ApplicationSourceType = "Helm"
-	ApplicationSourceTypeKustomize ApplicationSourceType = "Kustomize"
-	ApplicationSourceTypeKsonnet   ApplicationSourceType = "Ksonnet"
-	ApplicationSourceTypeDirectory ApplicationSourceType = "Directory"
-	ApplicationSourceTypePlugin    ApplicationSourceType = "Plugin"
+	//TODO - 아래의 SourceType 지원
+	//ApplicationSourceTypeKustomize ApplicationSourceType = "Kustomize"
+	//ApplicationSourceTypeKsonnet   ApplicationSourceType = "Ksonnet"
+	//ApplicationSourceTypeDirectory ApplicationSourceType = "Directory"
+	//ApplicationSourceTypePlugin    ApplicationSourceType = "Plugin"
 )
+
+// ApplicationSourceHelm holds helm specific options
+type ApplicationSourceHelm struct {
+	ClonedRepoPath string `json:"clonedRepoPath,omitempty"`
+	ReleaseName    string `json:"releaseName,omitempty"`
+}
 
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})

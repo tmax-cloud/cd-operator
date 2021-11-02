@@ -54,6 +54,14 @@ spec:
                 description: Source is a reference to the location of the application's
                   manifests or chart
                 properties:
+                  helm:
+                    description: Helm holds helm specific options
+                    properties:
+                      clonedRepoPath:
+                        type: string
+                      releaseName:
+                        type: string
+                    type: object
                   path:
                     description: Path is a directory path within the Git repository,
                       and is only valid for applications sourced from Git.
@@ -103,6 +111,12 @@ spec:
                         - secretKeyRef
                         type: object
                     type: object
+                  type:
+                    description: Type specifies the type of the application's source
+                    enum:
+                    - PlainYAML
+                    - Helm
+                    type: string
                 required:
                 - repoURL
                 type: object
@@ -126,7 +140,7 @@ spec:
             description: ApplicationStatus defines the observed state of Application
             properties:
               conditions:
-                description: Conditions of IntegrationConfig
+                description: Conditions of Application
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct

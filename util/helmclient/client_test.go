@@ -27,16 +27,17 @@ func TestInstallChart(t *testing.T) {
 		panic(err)
 	}
 
-	testHelmClient := &Client{client: helmClient}
+	testHelmClient := &Client{Client: helmClient}
 
 	url := "https://github.com/tmax-cloud/cd-example-apps"
 	randomString := utils.RandomString(5)
 	path := "/tmp/test-" + randomString
+	revision := "main"
 
 	defer os.RemoveAll(path)
 
 	// 1. 로컬에 helm manifest의 git repo clone
-	err = gitclient.Clone(url, path)
+	err = gitclient.Clone(url, path, revision)
 	assert.Equal(t, err, nil)
 
 	// 2. 로컬에 저장된 경로를 이용하여 chart install
