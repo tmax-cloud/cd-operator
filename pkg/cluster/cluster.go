@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
@@ -25,9 +25,9 @@ func GetApplicationClusterConfig(ctx context.Context, c client.Client, app *cdv1
 	return clusterConfig, err
 }
 
-func getDestClusterSecret(ctx context.Context, c client.Client, destName, appNamespace string) (*v1.Secret, error) {
+func getDestClusterSecret(ctx context.Context, c client.Client, destName, appNamespace string) (*corev1.Secret, error) {
 	secretName := destName + "-kubeconfig"
-	clusterSecret := &v1.Secret{
+	clusterSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: secretName,
 		},
@@ -40,7 +40,7 @@ func getDestClusterSecret(ctx context.Context, c client.Client, destName, appNam
 }
 
 // secretToCluster converts a secret into a Cluster object
-func secretToClusterConfig(s *v1.Secret) (*rest.Config, error) {
+func secretToClusterConfig(s *corev1.Secret) (*rest.Config, error) {
 	kubeconfig := s.StringData["value"]
 
 	clientConfig, err := clientcmd.NewClientConfigFromBytes([]byte(kubeconfig))

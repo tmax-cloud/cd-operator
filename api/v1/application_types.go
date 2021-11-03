@@ -127,7 +127,7 @@ type ApplicationSource struct {
 	TargetRevision string `json:"targetRevision,omitempty"`
 	// Type specifies the type of the application's source
 	// +kubebuilder:validation:Enum:=PlainYAML;Helm
-	Type ApplicationSourceType `json:"type,omitempty"`
+	Type ApplicationSourceType `json:"type"`
 	// Helm holds helm specific options
 	Helm *ApplicationSourceHelm `json:"helm,omitempty"`
 	// Token is a token for accessing the remote git server. It can be empty, if you don't want to register a webhook
