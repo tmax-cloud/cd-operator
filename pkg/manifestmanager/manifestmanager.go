@@ -277,6 +277,19 @@ func (m *ManifestManager) InstallHelmChart(app *cdv1.Application) error {
 	return nil
 }
 
+func (m *ManifestManager) UninstallRelease(app *cdv1.Application) error {
+	if m.helmClient == nil {
+		m.initHelmClient()
+	}
+
+	err := m.helmClient.UninstallReleaseByName(app.Spec.Source.Helm.ReleaseName)
+	if err != nil {
+		panic(err)
+	}
+
+	return nil
+}
+
 func (m *ManifestManager) initHelmClient() {
 	opt := &gohelm.Options{
 		RepositoryCache:  "/tmp/.helmcache",
