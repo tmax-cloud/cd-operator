@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/httpclient"
+	"gotest.tools/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -383,8 +384,51 @@ func TestApplyManifest(t *testing.T) {
 	}
 }
 
+type gitRepoCloneTestCase struct {
+	app *cdv1.Application
+}
+
 func TestGitRepoClone(t *testing.T) {
-	//TODO
+	tc := map[string]gitRepoCloneTestCase{
+		"helm-app-1": {
+			app: &cdv1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "helm-app-1",
+					Namespace: "default",
+				},
+				Spec: cdv1.ApplicationSpec{
+					Source: cdv1.ApplicationSource{
+						RepoURL:        "https://github.com/tmax-cloud/cd-example-apps",
+						Path:           "helm-guestbook",
+						TargetRevision: "main",
+						Helm:           &cdv1.ApplicationSourceHelm{}, // TODO : Default로 nil이 됨. 추후 소스 타입 체킹할 떄, 할당해줄 것
+					},
+				},
+			},
+		},
+	}
+
+	s := runtime.NewScheme()
+	utilruntime.Must(v1.AddToScheme(s))
+	utilruntime.Must(cdv1.AddToScheme(s))
+
+	m := &ManifestManager{Context: context.Background(), Client: fake.NewClientBuilder().WithScheme(s).Build()}
+
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			err := m.GitRepoClone(c.app)
+			assert.Equal(t, err, nil)
+			assert.Equal(t, hasLocalPathPrefix(c.app.Spec.Source.Helm.ClonedRepoPath), true)
+		})
+	}
+}
+
+const (
+	localPathPrefix = "/tmp/repo-"
+)
+
+func hasLocalPathPrefix(path string) bool {
+	return strings.HasPrefix(path, localPathPrefix)
 }
 
 func TestInstallHelmChart(t *testing.T) {

@@ -232,7 +232,7 @@ func bytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 }
 
 func (m *ManifestManager) GitRepoClone(app *cdv1.Application) error {
-	repo := app.Spec.Source.GetRepository()
+	repo := app.Spec.Source.RepoURL
 	revision := app.Spec.Source.TargetRevision
 
 	localPath := "/tmp/repo-" + utils.RandomString(5)
