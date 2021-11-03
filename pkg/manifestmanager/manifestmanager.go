@@ -6,11 +6,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	gohelm "github.com/mittwald/go-helm-client"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"github.com/tmax-cloud/cd-operator/internal/utils"
 	"github.com/tmax-cloud/cd-operator/pkg/cluster"
 	"github.com/tmax-cloud/cd-operator/pkg/httpclient"
+	"github.com/tmax-cloud/cd-operator/util/gitclient"
+	"github.com/tmax-cloud/cd-operator/util/helmclient"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
@@ -28,6 +33,7 @@ type ManifestManager struct {
 	Client client.Client
 	context.Context
 	httpclient.HTTPClient
+	helmClient *helmclient.Client
 }
 
 type DownloadURL struct {
@@ -223,4 +229,66 @@ func bytesToUnstructuredObject(obj *runtime.RawExtension) (*unstructured.Unstruc
 	}
 
 	return &unstructured.Unstructured{Object: unstrObj}, nil
+}
+
+func (m *ManifestManager) GitRepoClone(app *cdv1.Application) error {
+	repo := app.Spec.Source.GetRepository()
+	revision := app.Spec.Source.TargetRevision
+
+	localPath := "/tmp/repo-" + utils.RandomString(5)
+
+	app.Spec.Source.Helm.ClonedRepoPath = localPath
+
+	err := gitclient.Clone(repo, localPath, revision)
+	if err != nil {
+		panic(err)
+	}
+
+	return nil
+}
+
+func (m *ManifestManager) InstallHelmChart(app *cdv1.Application) error {
+	if m.helmClient == nil {
+		m.initHelmClient()
+	}
+
+	// 로컬에 저장된 경로를 이용하여 chart install
+	randomString := utils.RandomString(5)
+	releaseName := "release-" + randomString
+	app.Spec.Source.Helm.ReleaseName = releaseName
+
+	chartPath := app.Spec.Source.Path
+	chartLocalPath := app.Spec.Source.Helm.ClonedRepoPath + "/" + chartPath
+
+	var namespace string
+	if app.Spec.Destination.Namespace == "" {
+		namespace = "default"
+	} else {
+		namespace = app.Spec.Destination.Namespace
+	}
+
+	err := m.helmClient.InstallChart(releaseName, chartLocalPath, namespace)
+	if err != nil {
+		panic(err)
+	}
+
+	// 로컬에 clone된 Repo 디렉토리 삭제
+	os.RemoveAll(app.Spec.Source.Helm.ClonedRepoPath)
+	return nil
+}
+
+func (m *ManifestManager) initHelmClient() {
+	opt := &gohelm.Options{
+		RepositoryCache:  "/tmp/.helmcache",
+		RepositoryConfig: "/tmp/.helmrepo",
+		Debug:            true,
+		Linting:          true,
+	}
+
+	goHelmClient, err := gohelm.New(opt)
+	if err != nil {
+		panic(err)
+	}
+
+	m.helmClient = &helmclient.Client{Client: goHelmClient}
 }

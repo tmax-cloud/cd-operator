@@ -24,11 +24,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-// type clusterSecret struct {
-// 	secretName string
-// 	// value      string
-// }
-
 type getManifestURLTestCase struct {
 	repoURL        string
 	path           string
@@ -386,6 +381,14 @@ func TestApplyManifest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGitRepoClone(t *testing.T) {
+	//TODO
+}
+
+func TestInstallHelmChart(t *testing.T) {
+	//TODO
 }
 
 func newTestServer() *httptest.Server {

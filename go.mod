@@ -8,6 +8,7 @@ require (
 	github.com/go-git/go-git/v5 v5.4.2
 	github.com/go-logr/logr v0.4.0
 	github.com/gorilla/mux v1.8.0
+	github.com/mittwald/go-helm-client v0.8.2
 	github.com/sirupsen/logrus v1.8.1
 	github.com/sourcegraph/go-diff v0.6.1
 	github.com/stretchr/testify v1.7.0
@@ -106,7 +107,6 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
-	github.com/mittwald/go-helm-client v0.8.2 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/spdystream v0.2.0 // indirect
 	github.com/moby/term v0.0.0-20210610120745-9d4ed1856297 // indirect
