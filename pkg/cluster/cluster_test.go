@@ -9,7 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -90,7 +90,7 @@ client-certificate: "./test_cert/tls.crt"
 
 	s := runtime.NewScheme()
 	utilruntime.Must(cdv1.AddToScheme(s))
-	utilruntime.Must(v1.AddToScheme(s))
+	utilruntime.Must(corev1.AddToScheme(s))
 
 	for name, c := range tc {
 		t.Run(name, func(t *testing.T) {
@@ -114,7 +114,7 @@ client-certificate: "./test_cert/tls.crt"
 				},
 			}
 
-			sec := &v1.Secret{
+			sec := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "exist-kubeconfig",
 					Namespace: "default",

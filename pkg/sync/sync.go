@@ -13,7 +13,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var log = logf.Log.WithName("sync")
+var (
+	log              = logf.Log.WithName("sync")
+	plainYamlManager manifestmanager.ManifestManager
+	helmManager      manifestmanager.ManifestManager = manifestmanager.NewHelmManager()
+)
 
 const (
 	defaultSyncCheckPerod = 60
@@ -46,61 +50,27 @@ func PeriodicSyncCheck(cli client.Client, app *cdv1.Application, done chan bool,
 	}
 }
 
-// TODO: resource 일단 다 배포하고 실패한 resource들 error를 array로
 func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 	log.Info("Checking Sync status...")
-	mgr := manifestmanager.ManifestManager{Client: cli, Context: context.Background(), HTTPClient: http.DefaultClient}
-	urls, err := mgr.GetManifestURLList(app)
-	if err != nil {
-		log.Error(err, "GetManifestURLList failed..")
+
+	if plainYamlManager == nil {
+		plainYamlManager = manifestmanager.NewPlainYamlManager(context.Background(), cli, http.DefaultClient)
+	}
+
+	var mgr manifestmanager.ManifestManager
+
+	switch app.Spec.Source.Type {
+	case cdv1.ApplicationSourceTypePlainYAML:
+		mgr = plainYamlManager
+	case cdv1.ApplicationSourceTypeHelm:
+		mgr = helmManager
+	default:
+		err := fmt.Errorf("get sync manager failed")
 		return err
 	}
-	oldDeployResources, err := mgr.GetDeployResourceList(app)
-	if err != nil {
-		log.Error(err, "GetDeployResourceList failed")
+
+	if err := mgr.Sync(app, forced); err != nil {
 		return err
-	}
-
-	updatedDeployResources := make(map[string]*cdv1.DeployResource)
-
-	for _, url := range urls {
-		manifestRawobj, err := mgr.ObjectFromManifest(url, app)
-		if err != nil {
-			log.Error(err, "Get object from manifest failed..")
-			return err
-		}
-		updatedDeployResource, err := mgr.UpdateDeployResource(manifestRawobj, app)
-		if err != nil {
-			log.Error(err, "NewDeployResource failed..")
-			return err
-		}
-		updatedDeployResources[updatedDeployResource.Name] = updatedDeployResource
-
-		manifestModifiedObj, err := mgr.CompareDeployWithManifest(manifestRawobj)
-		if manifestModifiedObj == nil && err != nil {
-			log.Error(err, "Compare deployed resource with manifest failed..")
-			return err
-		}
-		if manifestModifiedObj != nil && (app.Spec.SyncPolicy.AutoSync || forced) {
-			exist := (err == nil)
-			if err := mgr.ApplyManifest(exist, manifestModifiedObj); err != nil {
-				log.Error(err, "Apply manifest failed..")
-				return err
-			}
-		}
-	}
-
-	for _, oldDeployResource := range oldDeployResources.Items {
-		if updatedDeployResources[oldDeployResource.Name] == nil {
-			if err := mgr.DeleteDeployResource(&oldDeployResource); err != nil {
-				log.Error(err, "DeleteDeployResource failed..")
-				return err
-			}
-		}
-	}
-
-	if app.Spec.SyncPolicy.AutoSync {
-		app.Status.Sync.Status = cdv1.SyncStatusCodeSynced
 	}
 
 	return nil

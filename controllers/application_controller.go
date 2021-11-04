@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -36,7 +38,7 @@ import (
 	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
 	"github.com/tmax-cloud/cd-operator/pkg/sync"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // ApplicationReconciler reconciles a Application object
@@ -175,16 +177,19 @@ func (r *ApplicationReconciler) finalizeApp(instance *cdv1.Application) error {
 
 // TODO: Namespace 처리 방안
 func (r *ApplicationReconciler) clearDeployedResources(instance *cdv1.Application) error {
-	mgr := manifestmanager.ManifestManager{Client: r.Client, Context: context.Background()}
-
-	deployedResourceList, err := mgr.GetDeployResourceList(instance)
-	if err != nil {
+	var mgr manifestmanager.ManifestManager
+	switch instance.Spec.Source.Type {
+	case cdv1.ApplicationSourceTypePlainYAML:
+		mgr = manifestmanager.NewPlainYamlManager(context.Background(), r.Client, http.DefaultClient)
+	case cdv1.ApplicationSourceTypeHelm:
+		mgr = manifestmanager.NewHelmManager()
+	default:
+		err := fmt.Errorf("get sync manager failed")
 		return err
 	}
-	for _, deployedResource := range deployedResourceList.Items {
-		if err := mgr.DeleteDeployResource(&deployedResource); err != nil {
-			return err
-		}
+
+	if err := mgr.Clear(instance); err != nil {
+		return err
 	}
 
 	return nil
@@ -213,11 +218,11 @@ func (r *ApplicationReconciler) clearWebhook(instance *cdv1.Application) error {
 }
 
 func (r *ApplicationReconciler) checkAppDestNamespace(instance *cdv1.Application) error {
-	if err := r.Client.Get(context.Background(), types.NamespacedName{Name: instance.Spec.Destination.Namespace}, &v1.Namespace{}); err != nil {
+	if err := r.Client.Get(context.Background(), types.NamespacedName{Name: instance.Spec.Destination.Namespace}, &corev1.Namespace{}); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		if err := r.Client.Create(context.Background(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: instance.Spec.Destination.Namespace}}); err != nil {
+		if err := r.Client.Create(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: instance.Spec.Destination.Namespace}}); err != nil {
 			return err
 		}
 	}

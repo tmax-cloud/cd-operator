@@ -119,6 +119,7 @@ spec:
                     type: string
                 required:
                 - repoURL
+                - type
                 type: object
               syncPolicy:
                 description: SyncPolicy controls when and how a sync will be performed
