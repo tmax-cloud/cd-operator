@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -119,14 +118,13 @@ func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (
 	// Set secret
 	r.setSecretString(instance) // for WebhookSecret
 
-	// Set webhook registered
-	r.setWebhookRegisteredCond(instance)
-
 	// Set ready
 	r.setReadyCond(instance)
 
-	instance.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
 	if instance.DeletionTimestamp == nil {
+		// Set webhook registered
+		r.setWebhookRegisteredCond(instance)
+		instance.Status.Sync.Status = cdv1.SyncStatusCodeUnknown
 		if err := sync.CheckSync(r.Client, instance, false); err != nil {
 			log.Error(err, "")
 			return ctrl.Result{}, err
@@ -180,9 +178,9 @@ func (r *ApplicationReconciler) clearDeployedResources(instance *cdv1.Applicatio
 	var mgr manifestmanager.ManifestManager
 	switch instance.Spec.Source.Type {
 	case cdv1.ApplicationSourceTypePlainYAML:
-		mgr = manifestmanager.NewPlainYamlManager(context.Background(), r.Client, http.DefaultClient)
+		mgr = sync.PlainYamlManager
 	case cdv1.ApplicationSourceTypeHelm:
-		mgr = manifestmanager.NewHelmManager()
+		mgr = sync.HelmManager
 	default:
 		err := fmt.Errorf("get sync manager failed")
 		return err

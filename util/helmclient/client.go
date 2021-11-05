@@ -11,26 +11,15 @@ type Client struct {
 }
 
 // InstallChart installs helm chart
-func (c *Client) InstallChart(releaseName, chartDir, namespace string) error {
-	// Use an unpacked(locally cloned) chart directory
-	chartSpec := gohelm.ChartSpec{
-		ReleaseName: releaseName,
-		ChartName:   chartDir,
-		Namespace:   namespace,
-		UpgradeCRDs: true,
-		Wait:        true,
-	}
-
+func (c *Client) InstallChart(chartSpec *gohelm.ChartSpec) (string, error) {
 	// If the chart is already installed, trigger an upgrade instead.
-	_, err := c.Client.InstallOrUpgradeChart(context.Background(), &chartSpec)
-
-	if err != context.DeadlineExceeded { // TODO : 확인필요. 리소스들도 정상적으로 다 생기는데, 왜 이게 발생하는 걸까?
-		if err != nil {
-			panic(err)
-		}
+	release, err := c.Client.InstallOrUpgradeChart(context.Background(), chartSpec)
+	// if err != context.DeadlineExceeded { // TODO : 확인필요. ChartSpec wait true 문제 -> 왜 true로 set??
+	if err != nil {
+		return "", err
 	}
 
-	return nil
+	return release.Manifest, nil
 }
 
 // UninstallReleaseByName uninstalls a release identified by the provided 'name'.

@@ -1,13 +1,13 @@
 package manifestmanager
 
 import (
-	"strings"
+	"os"
 	"testing"
 
 	gohelm "github.com/mittwald/go-helm-client"
+	"github.com/stretchr/testify/require"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/util/helmclient"
-	"gotest.tools/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -52,30 +52,17 @@ func TestGitRepoClone(t *testing.T) {
 
 	goHelmClient, err := gohelm.New(opt)
 	if err != nil {
-		panic(err)
+		require.NoError(t, err)
 	}
 	m := &helmManager{helmClient: &helmclient.Client{Client: goHelmClient}}
 
 	for name, c := range tc {
 		t.Run(name, func(t *testing.T) {
 			err := m.gitRepoClone(c.app)
-			assert.Equal(t, err, nil)
-			assert.Equal(t, hasLocalPathPrefix(c.app.Spec.Source.Helm.ClonedRepoPath), true)
+			os.RemoveAll("/tmp/repo-" + c.app.Name + "-" + c.app.Namespace)
+			require.NoError(t, err)
 		})
 	}
-}
-
-const (
-	localPathPrefix   = "/tmp/repo-"
-	releaseNamePrefix = "release-"
-)
-
-func hasLocalPathPrefix(path string) bool {
-	return strings.HasPrefix(path, localPathPrefix)
-}
-
-func hasReleaseNamePrefix(path string) bool {
-	return strings.HasPrefix(path, releaseNamePrefix)
 }
 
 type InstallHelmChartTestCase struct {
@@ -115,29 +102,22 @@ func TestInstallHelmChart(t *testing.T) {
 
 	goHelmClient, err := gohelm.New(opt)
 	if err != nil {
-		panic(err)
+		require.NoError(t, err)
 	}
 	m := &helmManager{helmClient: &helmclient.Client{Client: goHelmClient}}
 
 	for name, c := range tc {
 		t.Run(name, func(t *testing.T) {
 			err := m.gitRepoClone(c.app)
-			assert.Equal(t, err, nil)
-			assert.Equal(t, hasLocalPathPrefix(c.app.Spec.Source.Helm.ClonedRepoPath), true)
-		})
-	}
+			require.NoError(t, err)
 
-	for name, c := range tc {
-		t.Run(name, func(t *testing.T) {
-			err := m.gitRepoClone(c.app)
-			assert.Equal(t, err, nil)
-
-			err = m.installHelmChart(c.app)
-			assert.Equal(t, err, nil)
-			assert.Equal(t, hasReleaseNamePrefix(c.app.Spec.Source.Helm.ReleaseName), true)
-
-			err = m.uninstallRelease(c.app)
-			assert.Equal(t, err, nil)
+			chartSpec := setChartSpec(c.app)
+			defer func() {
+				err := m.uninstallRelease(c.app)
+				require.NoError(t, err)
+			}()
+			_, err = m.installHelmChart(chartSpec, c.app, false)
+			require.NoError(t, err)
 		})
 	}
 }

@@ -44,7 +44,15 @@ func TestInstallChart(t *testing.T) {
 	releaseName := "test-" + randomString
 	chartPath := path + "/helm-guestbook"
 	namespace := "default"
-	err = testHelmClient.InstallChart(releaseName, chartPath, namespace)
+	chartSpec := &gohelm.ChartSpec{
+		ReleaseName: releaseName,
+		ChartName:   chartPath,
+		Namespace:   namespace,
+		UpgradeCRDs: true,
+		Wait:        false,
+	}
+
+	_, err = testHelmClient.InstallChart(chartSpec)
 	assert.Equal(t, err, nil)
 
 	defer func() {
