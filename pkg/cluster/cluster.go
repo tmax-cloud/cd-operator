@@ -41,9 +41,9 @@ func getDestClusterSecret(ctx context.Context, c client.Client, destName, appNam
 
 // secretToCluster converts a secret into a Cluster object
 func secretToClusterConfig(s *corev1.Secret) (*rest.Config, error) {
-	kubeconfig := s.StringData["value"]
+	kubeconfig := s.Data["value"]
 
-	clientConfig, err := clientcmd.NewClientConfigFromBytes([]byte(kubeconfig))
+	clientConfig, err := clientcmd.NewClientConfigFromBytes(kubeconfig)
 	if err != nil {
 		return nil, err
 	}

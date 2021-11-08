@@ -11,14 +11,12 @@ import (
 	"github.com/tmax-cloud/cd-operator/util/helmclient"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
 
 type helmManager struct {
 	DefaultCli client.Client
-	TargetCli  client.Client
 	context.Context
 	helmClient *helmclient.Client
 }
@@ -38,7 +36,6 @@ func NewHelmManager(ctx context.Context, cli client.Client) ManifestManager {
 	return &helmManager{
 		Context:    ctx,
 		DefaultCli: cli,
-		TargetCli:  cli,
 		helmClient: &helmclient.Client{
 			Client: goHelmClient,
 		},
@@ -51,6 +48,11 @@ func (m *helmManager) Sync(app *cdv1.Application, forced bool) error {
 	}
 
 	chartSpec := setChartSpec(app)
+
+	if err := m.setTargetClient(app); err != nil {
+		log.Error(err, "setTargetClient failed..")
+		return err
+	}
 
 	oldDeployResources, err := getDeployResourceList(m.DefaultCli, app)
 	if err != nil {
@@ -94,13 +96,19 @@ func (m *helmManager) Sync(app *cdv1.Application, forced bool) error {
 }
 
 func (m *helmManager) Clear(app *cdv1.Application) error {
+	if err := m.setTargetClient(app); err != nil {
+		return err
+	}
+
 	if err := m.uninstallRelease(app); err != nil {
 		return err
 	}
+
 	deployedResourceList, err := getDeployResourceList(m.DefaultCli, app)
 	if err != nil {
 		return err
 	}
+
 	for _, deployedResource := range deployedResourceList.Items {
 		if err := m.clearDeployResource(&deployedResource); err != nil {
 			return err
@@ -113,12 +121,10 @@ func (m *helmManager) Clear(app *cdv1.Application) error {
 func (m *helmManager) gitRepoClone(app *cdv1.Application) error {
 	repo := app.Spec.Source.RepoURL
 	revision := app.Spec.Source.TargetRevision
-
 	localPath := "/tmp/repo-" + app.Name + "-" + app.Namespace
 
-	err := gitclient.Clone(repo, localPath, revision)
-	if err != nil {
-		panic(err)
+	if err := gitclient.Clone(repo, localPath, revision); err != nil {
+		return err
 	}
 
 	return nil
@@ -221,16 +227,32 @@ func (m *helmManager) setTargetClient(app *cdv1.Application) error {
 			return err
 		}
 
-		s := runtime.NewScheme()
-		utilruntime.Must(cdv1.AddToScheme(s))
-		c, err := client.New(cfg, client.Options{Scheme: s})
+		opt := &gohelm.RestConfClientOptions{
+			Options: &gohelm.Options{
+				RepositoryCache:  "/tmp/.helmcache",
+				RepositoryConfig: "/tmp/.helmrepo",
+				Debug:            true,
+				Linting:          true,
+			},
+			RestConfig: cfg,
+		}
+		cli, err := gohelm.NewClientFromRestConf(opt)
 		if err != nil {
-			log.Error(err, "Create client failed..")
 			return err
 		}
-		m.TargetCli = c
+		m.helmClient.Client = cli
 	} else {
-		m.TargetCli = m.DefaultCli
+		opt := &gohelm.Options{
+			RepositoryCache:  "/tmp/.helmcache",
+			RepositoryConfig: "/tmp/.helmrepo",
+			Debug:            true,
+			Linting:          true,
+		}
+		cli, err := gohelm.New(opt)
+		if err != nil {
+			return err
+		}
+		m.helmClient.Client = cli
 	}
 	return nil
 }
