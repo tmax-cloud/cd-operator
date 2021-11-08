@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/cluster"
 	"github.com/tmax-cloud/cd-operator/pkg/httpclient"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -23,7 +21,9 @@ import (
 )
 
 type plainYamlManager struct {
-	Client client.Client
+	DefaultCli client.Client
+	// Client for multi cluster
+	TargetCli client.Client
 	context.Context
 	httpclient.HTTPClient
 }
@@ -36,7 +36,8 @@ type DownloadURL struct {
 
 func NewPlainYamlManager(ctx context.Context, cli client.Client, httpCli httpclient.HTTPClient) ManifestManager {
 	return &plainYamlManager{
-		Client:     cli,
+		DefaultCli: cli,
+		TargetCli:  cli,
 		Context:    ctx,
 		HTTPClient: httpCli,
 	}
@@ -48,7 +49,7 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 		log.Error(err, "GetManifestURLList failed..")
 		return err
 	}
-	oldDeployResources, err := m.getDeployResourceList(app)
+	oldDeployResources, err := getDeployResourceList(m.DefaultCli, app)
 	if err != nil {
 		log.Error(err, "GetDeployResourceList failed")
 		return err
@@ -57,36 +58,39 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 	updatedDeployResources := make(map[string]*cdv1.DeployResource)
 
 	for _, url := range urls {
-		manifestRawobj, err := m.objectFromManifest(url, app)
+		manifestRawobjs, err := m.objectFromManifest(url, app)
 		if err != nil {
 			log.Error(err, "Get object from manifest failed..")
 			return err
 		}
-		updatedDeployResource, err := m.updateDeployResource(manifestRawobj, app)
-		if err != nil {
-			log.Error(err, "NewDeployResource failed..")
-			return err
-		}
-		updatedDeployResources[updatedDeployResource.Name] = updatedDeployResource
 
-		manifestModifiedObj, err := m.compareDeployWithManifest(manifestRawobj)
-		if manifestModifiedObj == nil && err != nil {
-			log.Error(err, "Compare deployed resource with manifest failed..")
-			return err
-		}
-		if manifestModifiedObj != nil && (app.Spec.SyncPolicy.AutoSync || forced) {
-			exist := (err == nil)
-			if err := m.applyManifest(exist, manifestModifiedObj); err != nil {
-				log.Error(err, "Apply manifest failed..")
+		for _, manifestRawobj := range manifestRawobjs {
+			updatedDeployResource, err := updateDeployResource(m.DefaultCli, manifestRawobj, app)
+			if err != nil {
+				log.Error(err, "NewDeployResource failed..")
 				return err
+			}
+			updatedDeployResources[updatedDeployResource.Name] = updatedDeployResource
+
+			manifestModifiedObj, err := m.compareDeployWithManifest(manifestRawobj)
+			if manifestModifiedObj == nil && err != nil {
+				log.Error(err, "Compare deployed resource with manifest failed..")
+				return err
+			}
+			if manifestModifiedObj != nil && (app.Spec.SyncPolicy.AutoSync || forced) {
+				exist := (err == nil)
+				if err := m.applyManifest(exist, manifestModifiedObj); err != nil {
+					log.Error(err, "Apply manifest failed..")
+					return err
+				}
 			}
 		}
 	}
 
 	for _, oldDeployResource := range oldDeployResources.Items {
 		if updatedDeployResources[oldDeployResource.Name] == nil {
-			if err := m.deleteDeployResource(&oldDeployResource); err != nil {
-				log.Error(err, "DeleteDeployResource failed..")
+			if err := m.clearApplicationResources(&oldDeployResource); err != nil {
+				log.Error(err, "clearApplicationResources failed..")
 				return err
 			}
 		}
@@ -100,12 +104,16 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 }
 
 func (m *plainYamlManager) Clear(app *cdv1.Application) error {
-	deployedResourceList, err := m.getDeployResourceList(app)
+	if err := m.setTargetClient(app); err != nil {
+		return err
+	}
+
+	deployedResourceList, err := getDeployResourceList(m.DefaultCli, app)
 	if err != nil {
 		return err
 	}
 	for _, deployedResource := range deployedResourceList.Items {
-		if err := m.deleteDeployResource(&deployedResource); err != nil {
+		if err := m.clearApplicationResources(&deployedResource); err != nil {
 			return err
 		}
 	}
@@ -118,7 +126,7 @@ func (m *plainYamlManager) getManifestURLList(app *cdv1.Application) ([]string, 
 	repo := app.Spec.Source.GetRepository()
 	revision := app.Spec.Source.TargetRevision // branch, tag, sha..
 	path := app.Spec.Source.Path
-	gitToken, err := app.GetToken(m.Client)
+	gitToken, err := app.GetToken(m.DefaultCli)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +196,9 @@ func (m *plainYamlManager) recursivePathCheck(apiBaseURL, repo, path, revision, 
 	return manifestURLs, nil
 }
 
-func (m *plainYamlManager) objectFromManifest(url string, app *cdv1.Application) (*unstructured.Unstructured, error) {
+func (m *plainYamlManager) objectFromManifest(url string, app *cdv1.Application) ([]*unstructured.Unstructured, error) {
+	var manifestRawObjs []*unstructured.Unstructured
+
 	resp, err := m.HTTPClient.Get(url)
 	if err != nil {
 		log.Error(err, "http Get failed..")
@@ -201,45 +211,44 @@ func (m *plainYamlManager) objectFromManifest(url string, app *cdv1.Application)
 		return nil, err
 	}
 
-	bytes, err := yaml.YAMLToJSON(body)
-	if err != nil {
-		log.Error(err, "YAMLToJSON failed..")
-		return nil, err
-	}
+	stringYAMLManifests := splitMultipleObjectsYAML(body)
 
-	if app.Spec.Destination.Name != "" {
-		cfg, err := cluster.GetApplicationClusterConfig(m.Context, m.Client, app)
+	for _, stringYAMLManifest := range stringYAMLManifests {
+		byteYAMLManifest := []byte(stringYAMLManifest)
+
+		bytes, err := yaml.YAMLToJSON(byteYAMLManifest)
 		if err != nil {
-			log.Error(err, "GetConfig failed..")
+			log.Error(err, "YAMLToJSON failed..")
 			return nil, err
 		}
 
-		s := runtime.NewScheme()
-		utilruntime.Must(cdv1.AddToScheme(s))
-		c, err := client.New(cfg, client.Options{Scheme: s})
-		if err != nil {
-			log.Error(err, "Create client failed..")
+		if string(bytes) == "null" {
+			continue
+		}
+
+		if err := m.setTargetClient(app); err != nil {
+			log.Error(err, "setTargetClient failed..")
 			return nil, err
 		}
-		m.Client = c
-	}
 
-	rawExt := &runtime.RawExtension{Raw: bytes}
-	manifestRawObj, err := bytesToUnstructuredObject(rawExt)
-	if err != nil {
-		log.Error(err, "BytesToUnstructuredObject failed..")
-		return nil, err
-	}
+		rawExt := &runtime.RawExtension{Raw: bytes}
+		manifestRawObj, err := bytesToUnstructuredObject(rawExt)
+		if err != nil {
+			log.Error(err, "BytesToUnstructuredObject failed..")
+			return nil, err
+		}
 
-	if len(manifestRawObj.GetNamespace()) == 0 {
-		manifestRawObj.SetNamespace(app.Spec.Destination.Namespace)
+		if len(manifestRawObj.GetNamespace()) == 0 {
+			manifestRawObj.SetNamespace(app.Spec.Destination.Namespace)
+		}
+		manifestRawObjs = append(manifestRawObjs, manifestRawObj)
 	}
-	return manifestRawObj, nil
+	return manifestRawObjs, nil
 }
 
 func (m *plainYamlManager) compareDeployWithManifest(manifestObj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	deployedObj := manifestObj.DeepCopy()
-	if err := m.Client.Get(m.Context, types.NamespacedName{
+	if err := m.TargetCli.Get(m.Context, types.NamespacedName{
 		Namespace: deployedObj.GetNamespace(),
 		Name:      deployedObj.GetName()}, deployedObj); err != nil {
 		if errors.IsNotFound(err) {
@@ -259,7 +268,7 @@ func (m *plainYamlManager) compareDeployWithManifest(manifestObj *unstructured.U
 	}
 
 	manifestObj.SetUnstructuredContent(patchedObj)
-	if err := m.Client.Update(m.Context, manifestObj, client.DryRunAll); err != nil {
+	if err := m.TargetCli.Update(m.Context, manifestObj, client.DryRunAll); err != nil {
 		return nil, err
 	}
 
@@ -274,62 +283,44 @@ func (m *plainYamlManager) compareDeployWithManifest(manifestObj *unstructured.U
 func (m *plainYamlManager) applyManifest(exist bool, manifestObj *unstructured.Unstructured) error {
 	if !exist {
 		log.Info("Create..")
-		if err := m.Client.Create(m.Context, manifestObj); err != nil {
+		if err := m.TargetCli.Create(m.Context, manifestObj); err != nil {
 			log.Error(err, "Creating Object failed..")
 			return err
 		}
 	} else {
-		if err := m.Client.Update(m.Context, manifestObj); err != nil {
+		if err := m.TargetCli.Update(m.Context, manifestObj); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (m *plainYamlManager) getDeployResourceList(app *cdv1.Application) (*cdv1.DeployResourceList, error) {
-	deployResourceList := &cdv1.DeployResourceList{}
+func (m *plainYamlManager) setTargetClient(app *cdv1.Application) error {
+	if app.Spec.Destination.Name != "" {
+		cfg, err := cluster.GetApplicationClusterConfig(m.Context, m.DefaultCli, app)
+		if err != nil {
+			log.Error(err, "GetConfig failed..")
+			return err
+		}
 
-	if err := m.Client.List(m.Context, deployResourceList, client.MatchingLabels{"cd.tmax.io/application": app.Name + "-" + app.Namespace}); err != nil {
-		return nil, err
+		s := runtime.NewScheme()
+		utilruntime.Must(cdv1.AddToScheme(s))
+		c, err := client.New(cfg, client.Options{Scheme: s})
+		if err != nil {
+			log.Error(err, "Create client failed..")
+			return err
+		}
+		m.TargetCli = c
+	} else {
+		m.TargetCli = m.DefaultCli
 	}
-	return deployResourceList, nil
+	return nil
 }
 
-func (m *plainYamlManager) updateDeployResource(unstObj *unstructured.Unstructured, app *cdv1.Application) (*cdv1.DeployResource, error) {
-	deployResource := &cdv1.DeployResource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName() + "-" + unstObj.GetNamespace()),
-			Namespace: app.Namespace,
-			Labels:    map[string]string{"cd.tmax.io/application": app.Name + "-" + app.Namespace},
-		},
-		Application: app.Name,
-		Spec: cdv1.DeployResourceSpec{
-			APIVersion: unstObj.GetAPIVersion(),
-			Name:       unstObj.GetName(),
-			Kind:       unstObj.GetKind(),
-			Namespace:  unstObj.GetNamespace(),
-		},
-	}
-
-	if err := m.Client.Get(m.Context, types.NamespacedName{
-		Name:      strings.ToLower(app.Name + "-" + unstObj.GetKind() + "-" + unstObj.GetName() + "-" + unstObj.GetNamespace()),
-		Namespace: app.Namespace}, deployResource); err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, err
-		}
-		if err := m.Client.Create(m.Context, deployResource); err != nil {
-			return nil, err
-		}
-		return deployResource, nil
-	}
-
-	return deployResource, nil
-}
-
-func (m *plainYamlManager) deleteDeployResource(deployResource *cdv1.DeployResource) error {
+func (m *plainYamlManager) clearApplicationResources(deployResource *cdv1.DeployResource) error {
 	deployedObj := &unstructured.Unstructured{}
 
-	if err := m.Client.Delete(m.Context, deployResource); err != nil {
+	if err := m.DefaultCli.Delete(context.Background(), deployResource); err != nil {
 		log.Error(err, "Delete DeployResource error..")
 		return err
 	}
@@ -339,7 +330,7 @@ func (m *plainYamlManager) deleteDeployResource(deployResource *cdv1.DeployResou
 	deployedObj.SetName(deployResource.Spec.Name)
 	deployedObj.SetNamespace(deployResource.Spec.Namespace)
 
-	if err := m.Client.Get(m.Context, types.NamespacedName{Namespace: deployedObj.GetNamespace(), Name: deployedObj.GetName()}, deployedObj); err != nil {
+	if err := m.TargetCli.Get(context.Background(), types.NamespacedName{Namespace: deployedObj.GetNamespace(), Name: deployedObj.GetName()}, deployedObj); err != nil {
 		if !errors.IsNotFound(err) {
 			log.Error(err, "Get deprecated resource error..")
 			return err
@@ -347,7 +338,7 @@ func (m *plainYamlManager) deleteDeployResource(deployResource *cdv1.DeployResou
 		return nil
 	}
 
-	if err := m.Client.Delete(m.Context, deployedObj); err != nil {
+	if err := m.TargetCli.Delete(context.Background(), deployedObj); err != nil {
 		log.Error(err, "Delete deprecated resource error..")
 		return err
 	}

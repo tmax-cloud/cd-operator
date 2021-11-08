@@ -15,8 +15,8 @@ import (
 
 var (
 	log              = logf.Log.WithName("sync")
-	plainYamlManager manifestmanager.ManifestManager
-	helmManager      manifestmanager.ManifestManager = manifestmanager.NewHelmManager()
+	PlainYamlManager manifestmanager.ManifestManager
+	HelmManager      manifestmanager.ManifestManager
 )
 
 const (
@@ -53,17 +53,20 @@ func PeriodicSyncCheck(cli client.Client, app *cdv1.Application, done chan bool,
 func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 	log.Info("Checking Sync status...")
 
-	if plainYamlManager == nil {
-		plainYamlManager = manifestmanager.NewPlainYamlManager(context.Background(), cli, http.DefaultClient)
+	if PlainYamlManager == nil {
+		PlainYamlManager = manifestmanager.NewPlainYamlManager(context.Background(), cli, http.DefaultClient)
+	}
+	if HelmManager == nil {
+		HelmManager = manifestmanager.NewHelmManager(context.Background(), cli)
 	}
 
 	var mgr manifestmanager.ManifestManager
 
 	switch app.Spec.Source.Type {
 	case cdv1.ApplicationSourceTypePlainYAML:
-		mgr = plainYamlManager
+		mgr = PlainYamlManager
 	case cdv1.ApplicationSourceTypeHelm:
-		mgr = helmManager
+		mgr = HelmManager
 	default:
 		err := fmt.Errorf("get sync manager failed")
 		return err
