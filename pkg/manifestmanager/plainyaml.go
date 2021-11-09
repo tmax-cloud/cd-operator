@@ -77,7 +77,7 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 			}
 			updatedDeployResources[updatedDeployResource.Name] = updatedDeployResource
 
-			manifestModifiedObj, err := m.compareDeployWithManifest(manifestRawobj)
+			manifestModifiedObj, err := m.compareDeployWithManifest(app, manifestRawobj)
 			if manifestModifiedObj == nil && err != nil {
 				log.Error(err, "Compare deployed resource with manifest failed..")
 				return err
@@ -101,7 +101,7 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 		}
 	}
 
-	if app.Spec.SyncPolicy.AutoSync {
+	if app.Status.Sync.Status == cdv1.SyncStatusCodeUnknown {
 		app.Status.Sync.Status = cdv1.SyncStatusCodeSynced
 	}
 
@@ -248,12 +248,13 @@ func (m *plainYamlManager) objectFromManifest(url string, app *cdv1.Application)
 	return manifestRawObjs, nil
 }
 
-func (m *plainYamlManager) compareDeployWithManifest(manifestObj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+func (m *plainYamlManager) compareDeployWithManifest(app *cdv1.Application, manifestObj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	deployedObj := manifestObj.DeepCopy()
 	if err := m.TargetCli.Get(m.Context, types.NamespacedName{
 		Namespace: deployedObj.GetNamespace(),
 		Name:      deployedObj.GetName()}, deployedObj); err != nil {
 		if errors.IsNotFound(err) {
+			app.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
 			return manifestObj, err
 		}
 		return nil, err
@@ -275,6 +276,7 @@ func (m *plainYamlManager) compareDeployWithManifest(manifestObj *unstructured.U
 	}
 
 	if fmt.Sprintf("%v", deployedObj) != fmt.Sprintf("%v", manifestObj) {
+		app.Status.Sync.Status = cdv1.SyncStatusCodeOutOfSync
 		log.Info("Deployed resource is not in-synced with manifests. Sync..")
 		return manifestObj, nil
 	}

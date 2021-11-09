@@ -126,7 +126,6 @@ func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (
 	if instance.DeletionTimestamp == nil {
 		// Set webhook registered
 		r.setWebhookRegisteredCond(instance)
-		instance.Status.Sync.Status = cdv1.SyncStatusCodeUnknown
 		if err := sync.CheckSync(r.Client, instance, false); err != nil {
 			log.Error(err, "")
 			return ctrl.Result{}, err
