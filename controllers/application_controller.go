@@ -64,8 +64,7 @@ var (
 //+kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile reconciles Application
-func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("Application", req.NamespacedName)
 
 	instance := &cdv1.Application{}
@@ -77,9 +76,55 @@ func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	if err := r.checkAppDestNamespace(instance); err != nil {
-		log.Error(err, "check app destination namespace failed..")
+	original := instance.DeepCopy()
+
+	// New Condition default
+	cond := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
+	if cond == nil {
+		cond = &metav1.Condition{
+			Type:    cdv1.ApplicationConditionReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  "NotReady",
+			Message: "Not Ready",
+		}
+		meta.SetStatusCondition(&instance.Status.Conditions, *cond)
+	}
+
+	defer func() {
+		p := client.MergeFrom(original)
+		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
+			log.Error(err, "")
+		}
+	}()
+
+	// Set webhook registered
+	r.setWebhookRegisteredCond(instance)
+
+	// Set ready
+	r.setReadyCond(instance)
+
+	if cond.Status == metav1.ConditionTrue {
+		r.manageSyncRoutine(instance)
+		if err := sync.CheckSync(r.Client, instance, false); err != nil {
+			log.Error(err, "2")
+			return ctrl.Result{}, err
+		}
+	}
+
+	if err := r.setDefaultValues(instance); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	if err := r.handleFinalizer(instance); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ApplicationReconciler) setDefaultValues(instance *cdv1.Application) error {
+	if err := r.checkAppDestNamespace(instance); err != nil {
+		return err
 	}
 
 	if instance.Status.Sync.Status == "" {
@@ -90,49 +135,10 @@ func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (
 		sync.SetDefaultSyncCheckPeriod(instance)
 	}
 
-	original := instance.DeepCopy()
-
-	r.manageSyncRoutine(instance)
-
-	// New Condition default
-	cond := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
-	if cond == nil {
-		cond = &metav1.Condition{
-			Type:    cdv1.ApplicationConditionReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  "ready",
-			Message: "",
-		}
-	}
-
-	defer func() {
-		meta.SetStatusCondition(&instance.Status.Conditions, *cond)
-		p := client.MergeFrom(original)
-		if err := r.Client.Status().Patch(ctx, instance, p); err != nil {
-			log.Error(err, "")
-		}
-	}()
-
-	if err := r.handleFinalizer(instance); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	// Set secret
-	r.setSecretString(instance) // for WebhookSecret
+	r.setSecretString(instance)
 
-	// Set ready
-	r.setReadyCond(instance)
-
-	if instance.DeletionTimestamp == nil {
-		// Set webhook registered
-		r.setWebhookRegisteredCond(instance)
-		if err := sync.CheckSync(r.Client, instance, false); err != nil {
-			log.Error(err, "")
-			return ctrl.Result{}, err
-		}
-	}
-
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *ApplicationReconciler) handleFinalizer(instance *cdv1.Application) error {
@@ -272,22 +278,13 @@ func (r *ApplicationReconciler) setSecretString(instance *cdv1.Application) {
 // Set ready condition, return if it's changed or not
 func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) {
 	ready := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
-	if ready == nil {
-		ready = &metav1.Condition{
-			Type:    cdv1.ApplicationConditionReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  "ready",
-			Message: "",
-		}
-	}
+	webhookRegistered := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionWebhookRegistered)
 
-	// TODO
-	// // For now, only checked is if webhook-registered is true & secrets are set
-	// webhookRegistered := instance.Status.Conditions.GetCondition(cicdv1.IntegrationConfigConditionWebhookRegistered)
-	// if instance.Status.Secrets != "" && webhookRegistered != nil && (webhookRegistered.Status == corev1.ConditionTrue || webhookRegistered.Reason == cicdv1.IntegrationConfigConditionReasonNoGitToken) {
-	// 	ready.Status = corev1.ConditionTrue
-	// }
-	meta.SetStatusCondition(&instance.Status.Conditions, *ready)
+	if instance.Status.Secrets != "" && webhookRegistered != nil && (webhookRegistered.Status == metav1.ConditionTrue || webhookRegistered.Reason == cdv1.ApplicationConditionReasonNoGitToken) {
+		ready.Status = metav1.ConditionTrue
+		ready.Reason = "Ready"
+		ready.Message = "Ready"
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -304,8 +301,8 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 		webhookRegistered = &metav1.Condition{
 			Type:    cdv1.ApplicationConditionWebhookRegistered,
 			Status:  metav1.ConditionFalse,
-			Reason:  "webhookRegistered",
-			Message: "",
+			Reason:  "webhookNotRegistered",
+			Message: "Webhook Not Registered",
 		}
 	}
 
@@ -317,7 +314,7 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 	}
 
 	// Register only if the condition is false
-	if webhookRegistered.Status == metav1.ConditionFalse {
+	if webhookRegistered.Status == metav1.ConditionFalse && instance.Status.Secrets != "" {
 		webhookRegistered.Status = metav1.ConditionFalse
 		webhookRegistered.Reason = ""
 		webhookRegistered.Message = ""
@@ -349,8 +346,8 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 					webhookRegistered.Message = err.Error()
 				} else {
 					webhookRegistered.Status = metav1.ConditionTrue
-					webhookRegistered.Reason = ""
-					webhookRegistered.Message = ""
+					webhookRegistered.Reason = "webhookRegisterSuccess"
+					webhookRegistered.Message = "Webhook Register Success"
 				}
 			}
 		}
