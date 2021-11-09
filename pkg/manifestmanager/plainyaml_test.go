@@ -146,8 +146,6 @@ func TestObjectFromManifest(t *testing.T) {
 	mockClient := fake.NewClientBuilder().Build()
 	m := plainYamlManager{DefaultCli: mockClient, TargetCli: mockClient, Context: context.Background(), HTTPClient: mockHTTPClient}
 
-	server := newTestServer()
-
 	tc := map[string]objectFromManifestTestCase{
 		"default": {
 			url: "validURL",
@@ -183,40 +181,6 @@ spec:
 			expectedErrOccur:     false,
 			expectedRawObj:       &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
 		},
-		"otherCluster": {
-			url: "validURL",
-			body: `apiVersion: v1
-kind: Service
-metadata:
-  name: guestbook-ui
-spec:
-  ports:
-  - port: 80
-    targetPort: 80
-  selector:
-    app: guestbook-ui`,
-			destinationName:      "test",
-			destinationNameSpace: "test",
-			expectedErrOccur:     false,
-			expectedRawObj:       &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
-		},
-		"noExistCluster": {
-			url: "validURL",
-			body: `apiVersion: v1
-kind: Service
-metadata:
-  name: guestbook-ui
-spec:
-  ports:
-  - port: 80
-    targetPort: 80
-  selector:
-    app: guestbook-ui`,
-			destinationName:      "test2",
-			destinationNameSpace: "test",
-			expectedErrOccur:     true,
-			expectedErrMsg:       "unable to find cluster secret test2-kubeconfig: secrets \"test2-kubeconfig\" not found",
-		},
 	}
 
 	for name, c := range tc {
@@ -240,32 +204,7 @@ spec:
 				}, nil
 			}
 
-			sec := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-kubeconfig",
-					Namespace: app.Namespace,
-				},
-				StringData: map[string]string{
-					"value": `apiVersion: v1
-clusters:
-- cluster:
-    server: ` + server.URL + `
-  name: test
-contexts:
-- context:
-    cluster: test
-    user: test-admin
-  name: test-admin@test
-current-context: test-admin@test
-kind: Config
-preferences: {}
-users:
-- name: test-admin
-`,
-				},
-			}
-
-			m.DefaultCli = fake.NewClientBuilder().WithScheme(s).WithObjects(app, sec).Build()
+			m.DefaultCli = fake.NewClientBuilder().WithScheme(s).WithObjects(app).Build()
 			manifestRawObjs, err := m.objectFromManifest(c.url, app)
 			if c.expectedErrOccur {
 				require.Equal(t, c.expectedErrMsg, err.Error())
@@ -392,6 +331,93 @@ func TestApplyManifest(t *testing.T) {
 	for name, c := range tc {
 		t.Run(name, func(t *testing.T) {
 			err := m.applyManifest(c.exist, c.manifestObj)
+			if c.expectedErrOccur {
+				require.Equal(t, c.expectedErrMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+type setTargetClientTestCase struct {
+	destinationName string
+
+	expectedErrOccur bool
+	expectedErrMsg   string
+}
+
+func TestSetTargetClient(t *testing.T) {
+	tc := map[string]setTargetClientTestCase{
+		"defaultCluster": {
+			destinationName:  "",
+			expectedErrOccur: false,
+		},
+		"otherCluster": {
+			destinationName:  "exist",
+			expectedErrOccur: false,
+		},
+		"noExistCluster": {
+			destinationName:  "noexist",
+			expectedErrOccur: true,
+			expectedErrMsg:   "unable to find cluster secret noexist-kubeconfig: secrets \"noexist-kubeconfig\" not found",
+		},
+	}
+
+	s := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(s))
+	utilruntime.Must(cdv1.AddToScheme(s))
+
+	mockHTTPClient := &httpclient.MockHTTPClient{}
+	mockClient := fake.NewClientBuilder().Build()
+	m := plainYamlManager{DefaultCli: mockClient, TargetCli: mockClient, Context: context.Background(), HTTPClient: mockHTTPClient}
+
+	server := newTestServer()
+
+	for name, c := range tc {
+		t.Run(name, func(t *testing.T) {
+			app := &cdv1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+				},
+				Spec: cdv1.ApplicationSpec{
+					Destination: cdv1.ApplicationDestination{
+						Name: c.destinationName,
+					},
+				},
+			}
+
+			sec := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "exist-kubeconfig",
+					Namespace: app.Namespace,
+				},
+				StringData: map[string]string{
+					"value": `apiVersion: v1
+clusters:
+- cluster:
+    server: ` + server.URL + `
+  name: test
+contexts:
+- context:
+    cluster: test
+    user: test-admin
+  name: test-admin@test
+current-context: test-admin@test
+kind: Config
+preferences: {}
+users:
+- name: test-admin
+`,
+				},
+			}
+
+			sec.Data = make(map[string][]byte)
+			sec.Data["value"] = []byte(sec.StringData["value"])
+
+			m.DefaultCli = fake.NewClientBuilder().WithScheme(s).WithObjects(app, sec).Build()
+			err := m.setTargetClient(app)
 			if c.expectedErrOccur {
 				require.Equal(t, c.expectedErrMsg, err.Error())
 			} else {

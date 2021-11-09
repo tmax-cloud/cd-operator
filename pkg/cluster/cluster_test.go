@@ -119,8 +119,8 @@ client-certificate: "./test_cert/tls.crt"
 					Name:      "exist-kubeconfig",
 					Namespace: "default",
 				},
-				StringData: map[string]string{
-					"value": c.value,
+				Data: map[string][]byte{
+					"value": []byte(c.value),
 				},
 			}
 

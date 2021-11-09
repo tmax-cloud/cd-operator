@@ -44,6 +44,11 @@ func NewPlainYamlManager(ctx context.Context, cli client.Client, httpCli httpcli
 }
 
 func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
+	if err := m.setTargetClient(app); err != nil {
+		log.Error(err, "setTargetClient failed..")
+		return err
+	}
+
 	urls, err := m.getManifestURLList(app)
 	if err != nil {
 		log.Error(err, "GetManifestURLList failed..")
@@ -112,11 +117,13 @@ func (m *plainYamlManager) Clear(app *cdv1.Application) error {
 	if err != nil {
 		return err
 	}
+
 	for _, deployedResource := range deployedResourceList.Items {
 		if err := m.clearApplicationResources(&deployedResource); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -224,11 +231,6 @@ func (m *plainYamlManager) objectFromManifest(url string, app *cdv1.Application)
 
 		if string(bytes) == "null" {
 			continue
-		}
-
-		if err := m.setTargetClient(app); err != nil {
-			log.Error(err, "setTargetClient failed..")
-			return nil, err
 		}
 
 		rawExt := &runtime.RawExtension{Raw: bytes}
