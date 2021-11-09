@@ -72,6 +72,7 @@ func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 		return err
 	}
 
+	app.Status.Sync.Status = cdv1.SyncStatusCodeUnknown
 	if err := mgr.Sync(app, forced); err != nil {
 		return err
 	}

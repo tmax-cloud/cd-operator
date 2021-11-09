@@ -222,9 +222,10 @@ type compareDeployWithTestCase struct {
 	manifestObj *unstructured.Unstructured
 	deployedObj *unstructured.Unstructured
 
-	expectedObj      *unstructured.Unstructured
-	expectedErrOccur bool
-	expectedErrMsg   string
+	expectedObj        *unstructured.Unstructured
+	expectedSyncStatus cdv1.SyncStatusCode
+	expectedErrOccur   bool
+	expectedErrMsg     string
 }
 
 func TestCompareDeployWithManifest(t *testing.T) {
@@ -233,23 +234,26 @@ func TestCompareDeployWithManifest(t *testing.T) {
 			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
 			deployedObj: nil,
 
-			expectedObj:      &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
-			expectedErrOccur: true,
-			expectedErrMsg:   `services "guestbook-ui" not found`,
+			expectedObj:        &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
+			expectedSyncStatus: cdv1.SyncStatusCodeOutOfSync,
+			expectedErrOccur:   true,
+			expectedErrMsg:     `services "guestbook-ui" not found`,
 		},
 		"inSync": {
 			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
 			deployedObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 80}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
 
-			expectedObj:      nil,
-			expectedErrOccur: false,
+			expectedObj:        nil,
+			expectedSyncStatus: cdv1.SyncStatusCodeUnknown,
+			expectedErrOccur:   false,
 		},
 		"outSync": {
 			manifestObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
 			deployedObj: &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"name": "guestbook-ui", "namespace": "test"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": 80, "targetPort": 8080}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}}},
 
-			expectedObj:      &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"creationTimestamp": interface{}(nil), "name": "guestbook-ui", "namespace": "test", "resourceVersion": "999"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}, "status": map[string]interface{}{"loadBalancer": map[string]interface{}{}}}},
-			expectedErrOccur: false,
+			expectedObj:        &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "v1", "kind": "Service", "metadata": map[string]interface{}{"creationTimestamp": interface{}(nil), "name": "guestbook-ui", "namespace": "test", "resourceVersion": "999"}, "spec": map[string]interface{}{"ports": []interface{}{map[string]interface{}{"port": "80", "targetPort": "80"}}, "selector": map[string]interface{}{"app": "guestbook-ui"}}, "status": map[string]interface{}{"loadBalancer": map[string]interface{}{}}}},
+			expectedSyncStatus: cdv1.SyncStatusCodeOutOfSync,
+			expectedErrOccur:   false,
 		},
 	}
 
@@ -263,18 +267,30 @@ func TestCompareDeployWithManifest(t *testing.T) {
 
 	for name, c := range tc {
 		t.Run(name, func(t *testing.T) {
+			app := &cdv1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+				},
+				Status: cdv1.ApplicationStatus{
+					Sync: cdv1.SyncStatus{
+						Status: cdv1.SyncStatusCodeUnknown,
+					},
+				},
+			}
 			if c.deployedObj != nil {
 				m.TargetCli = fake.NewClientBuilder().WithScheme(s).WithObjects(c.deployedObj).Build()
 			} else {
 				m.TargetCli = fake.NewClientBuilder().WithScheme(s).Build()
 			}
-			manifestObj, err := m.compareDeployWithManifest(c.manifestObj)
+			manifestObj, err := m.compareDeployWithManifest(app, c.manifestObj)
 
 			if c.expectedErrOccur {
 				require.Equal(t, c.expectedErrMsg, err.Error())
 			} else {
 				require.NoError(t, err)
 			}
+			require.Equal(t, c.expectedSyncStatus, app.Status.Sync.Status)
 			require.Equal(t, c.expectedObj, manifestObj)
 		})
 	}
