@@ -98,8 +98,10 @@ func (r *ApplicationReconciler) Reconcile(c context.Context, req ctrl.Request) (
 	cond := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
 	if cond == nil {
 		cond = &metav1.Condition{
-			Type:   cdv1.ApplicationConditionReady,
-			Status: metav1.ConditionFalse,
+			Type:    cdv1.ApplicationConditionReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  "ready",
+			Message: "",
 		}
 	}
 
@@ -273,8 +275,10 @@ func (r *ApplicationReconciler) setReadyCond(instance *cdv1.Application) {
 	ready := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionReady)
 	if ready == nil {
 		ready = &metav1.Condition{
-			Type:   cdv1.ApplicationConditionReady,
-			Status: metav1.ConditionFalse,
+			Type:    cdv1.ApplicationConditionReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  "ready",
+			Message: "",
 		}
 	}
 
@@ -299,8 +303,10 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 	webhookRegistered := meta.FindStatusCondition(instance.Status.Conditions, cdv1.ApplicationConditionWebhookRegistered)
 	if webhookRegistered == nil {
 		webhookRegistered = &metav1.Condition{
-			Type:   cdv1.ApplicationConditionWebhookRegistered,
-			Status: metav1.ConditionFalse,
+			Type:    cdv1.ApplicationConditionWebhookRegistered,
+			Status:  metav1.ConditionFalse,
+			Reason:  "webhookRegistered",
+			Message: "",
 		}
 	}
 
