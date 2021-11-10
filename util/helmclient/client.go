@@ -2,9 +2,14 @@ package helmclient
 
 import (
 	"context"
+	"os/exec"
 
 	gohelm "github.com/mittwald/go-helm-client"
+	cdexec "github.com/tmax-cloud/cd-operator/util/exec"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logf.Log.WithName("helm-client")
 
 type Client struct {
 	Client gohelm.Client
@@ -28,5 +33,38 @@ func (c *Client) UninstallReleaseByName(releaseName string) error {
 		panic(err)
 	}
 
+	return nil
+}
+
+// InstallChartByCLI installs helm chart by command line
+func (c *Client) InstallChartByCLI(chartSpec *gohelm.ChartSpec) error {
+	releaseName := chartSpec.ReleaseName
+	chartLocalPath := chartSpec.ChartName
+	namespace := chartSpec.Namespace
+
+	// TODO : 범용적으로 쓰이게끔 리팩토링 할 것
+	args := []string{"install", releaseName, chartLocalPath, "-n", namespace}
+	stdout, err := cdexec.Run(exec.Command("helm", args...))
+
+	if err != nil {
+		return err
+	}
+
+	log.Info(stdout)
+	return nil
+}
+
+// UninstallReleaseByCLI uninstalls helm chart by command line
+func (c *Client) UninstallReleaseByCLI(releaseName, namespace string) error {
+
+	// TODO : 범용적으로 쓰이게끔 리팩토링 할 것
+	args := []string{"uninstall", releaseName, "-n", namespace}
+	stdout, err := cdexec.Run(exec.Command("helm", args...))
+
+	if err != nil {
+		return err
+	}
+
+	log.Info(stdout)
 	return nil
 }
