@@ -23,7 +23,7 @@ import (
 	"github.com/tmax-cloud/cd-operator/internal/configs"
 	"github.com/tmax-cloud/cd-operator/internal/utils"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1beta1 "k8s.io/api/networking/v1beta1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -93,7 +93,7 @@ func NewExposeController(cfg *rest.Config) (*ExposeController, error) {
 	})
 
 	// Ingress reconciler
-	ingClient, err := utils.NewGroupVersionResourceClient(cfg, namespace, networkingv1beta1.SchemeGroupVersion.WithResource(resourceIngress))
+	ingClient, err := utils.NewGroupVersionResourceClient(cfg, namespace, networkingv1.SchemeGroupVersion.WithResource(resourceIngress))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func NewExposeController(cfg *rest.Config) (*ExposeController, error) {
 		log:          controller.log.WithName(resourceIngress),
 		hostUpdateCh: controller.updateExternalURLCh,
 		resourceName: ingName,
-		obj:          &networkingv1beta1.Ingress{},
+		obj:          &networkingv1.Ingress{},
 	})
 
 	return controller, nil
@@ -268,7 +268,7 @@ func (i *exposeIngressReconciler) getRefObject() runtime.Object {
 }
 
 func (i *exposeIngressReconciler) reconcile(obj runtime.Object, exposeMode exposeType) error {
-	ing, ok := obj.(*networkingv1beta1.Ingress)
+	ing, ok := obj.(*networkingv1.Ingress)
 	if !ok {
 		return fmt.Errorf("obj is not an Ingress")
 	}
@@ -288,7 +288,7 @@ func (i *exposeIngressReconciler) reconcile(obj runtime.Object, exposeMode expos
 	}()
 
 	// Check if class is set properly
-	ing.Annotations[networkingv1beta1.AnnotationIngressClass] = configs.IngressClass
+	ing.Annotations["kubernetes.io/ingress.class"] = configs.IngressClass
 
 	// Check if desired host is set properly
 	if configs.IngressHost != "" {
