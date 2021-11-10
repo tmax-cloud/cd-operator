@@ -61,6 +61,9 @@ type Client interface {
 	// Branch
 
 	GetBranch(branch string) (*Branch, error)
+
+	// Manifest Files
+	GetManifestURLs(path, revision string) ([]DownloadURL, error)
 }
 
 // IssueType is a type of the issue

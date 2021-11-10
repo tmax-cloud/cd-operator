@@ -410,6 +410,27 @@ func (c *Client) GetBranch(branch string) (*git.Branch, error) {
 	return &git.Branch{Name: resp.Name, CommitID: resp.Commit.Sha}, nil
 }
 
+// GetManifestURLs gets manifests' URLs
+func (c *Client) GetManifestURLs(path, revision string) ([]git.DownloadURL, error) {
+	apiURL := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", c.GitAPIURL, c.GitRepository, path, revision)
+
+	raw, _, err := c.requestHTTP(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var downloadURLs []git.DownloadURL
+	var downloadURL git.DownloadURL
+
+	if err := json.Unmarshal(raw, &downloadURLs); err != nil {
+		if err := json.Unmarshal(raw, &downloadURL); err != nil {
+			return nil, err
+		}
+		downloadURLs = append(downloadURLs, downloadURL)
+	}
+	return downloadURLs, nil
+}
+
 func convertPullRequestToShared(pr *PullRequest) *git.PullRequest {
 	var labels []git.IssueLabel
 	for _, l := range pr.Labels {

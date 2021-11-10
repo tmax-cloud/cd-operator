@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
+	"github.com/tmax-cloud/cd-operator/internal/utils"
 	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -54,7 +55,11 @@ func CheckSync(cli client.Client, app *cdv1.Application, forced bool) error {
 	log.Info("Checking Sync status...")
 
 	if PlainYamlManager == nil {
-		PlainYamlManager = manifestmanager.NewPlainYamlManager(context.Background(), cli, http.DefaultClient)
+		gitCli, err := utils.GetGitCli(app, cli)
+		if err != nil {
+			return err
+		}
+		PlainYamlManager = manifestmanager.NewPlainYamlManager(context.Background(), cli, http.DefaultClient, gitCli)
 	}
 	if HelmManager == nil {
 		HelmManager = manifestmanager.NewHelmManager(context.Background(), cli)

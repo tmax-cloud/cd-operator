@@ -106,7 +106,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if cond.Status == metav1.ConditionTrue {
 		r.manageSyncRoutine(instance)
 		if err := sync.CheckSync(r.Client, instance, false); err != nil {
-			log.Error(err, "2")
+			log.Error(err, "")
 			return ctrl.Result{}, err
 		}
 	}

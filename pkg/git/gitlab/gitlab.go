@@ -488,6 +488,12 @@ func (c *Client) GetBranch(branch string) (*git.Branch, error) {
 	return &git.Branch{Name: resp.Name, CommitID: resp.Commit.ID}, nil
 }
 
+// GetManifestURLs gets manifests' URLs
+func (c *Client) GetManifestURLs(path, revision string) ([]git.DownloadURL, error) {
+	// TODO
+	return nil, nil
+}
+
 func (c *Client) requestHTTP(method, apiURL string, data interface{}) ([]byte, http.Header, error) {
 	return git.RequestHTTP(method, apiURL, c.header, data)
 }
