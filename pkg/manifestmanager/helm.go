@@ -229,6 +229,7 @@ func (m *helmManager) setTargetClient(app *cdv1.Application) error {
 
 		opt := &gohelm.RestConfClientOptions{
 			Options: &gohelm.Options{
+				Namespace:        app.Spec.Destination.Namespace,
 				RepositoryCache:  "/tmp/.helmcache",
 				RepositoryConfig: "/tmp/.helmrepo",
 				Debug:            true,
@@ -243,6 +244,7 @@ func (m *helmManager) setTargetClient(app *cdv1.Application) error {
 		m.helmClient.Client = cli
 	} else {
 		opt := &gohelm.Options{
+			Namespace:        app.Spec.Destination.Namespace,
 			RepositoryCache:  "/tmp/.helmcache",
 			RepositoryConfig: "/tmp/.helmrepo",
 			Debug:            true,

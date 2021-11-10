@@ -16,6 +16,7 @@ import (
 
 func TestInstallChart(t *testing.T) {
 	opt := &gohelm.Options{
+		Namespace:        "default",
 		RepositoryCache:  "/tmp/.helmcache",
 		RepositoryConfig: "/tmp/.helmrepo",
 		Debug:            true,
@@ -41,7 +42,7 @@ func TestInstallChart(t *testing.T) {
 	// 2. 로컬에 저장된 경로를 이용하여 chart install
 	releaseName := "test-" + randomString
 	chartPath := path + "/helm-guestbook"
-	namespace := "test-1109"
+	namespace := "default"
 	chartSpec := &gohelm.ChartSpec{
 		ReleaseName: releaseName,
 		ChartName:   chartPath,
