@@ -258,7 +258,7 @@ func (m *helmManager) setTargetClient(app *cdv1.Application) error {
 }
 
 func (m *helmManager) clearDeployResource(deployResource *cdv1.DeployResource) error {
-	if err := m.DefaultCli.Delete(context.Background(), deployResource); err != nil {
+	if err := m.DefaultCli.Delete(m.Context, deployResource); err != nil {
 		log.Error(err, "Delete DeployResource error..")
 		return err
 	}
