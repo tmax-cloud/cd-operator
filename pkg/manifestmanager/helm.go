@@ -123,7 +123,8 @@ func (m *helmManager) gitRepoClone(app *cdv1.Application) error {
 	revision := app.Spec.Source.TargetRevision
 	localPath := "/tmp/repo-" + app.Name + "-" + app.Namespace
 
-	if err := gitclient.Clone(repo, localPath, revision); err != nil {
+	_, err := gitclient.Clone(repo, localPath, revision)
+	if err != nil {
 		return err
 	}
 
