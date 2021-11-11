@@ -36,7 +36,7 @@ func TestInstallChart(t *testing.T) {
 	defer os.RemoveAll(path)
 
 	// 1. 로컬에 helm manifest의 git repo clone
-	err = gitclient.Clone(url, path, revision)
+	_, err = gitclient.Clone(url, path, revision)
 	require.Equal(t, err, nil)
 
 	// 2. 로컬에 저장된 경로를 이용하여 chart install
@@ -86,7 +86,7 @@ func TestInstallChartByCLI(t *testing.T) {
 	defer os.RemoveAll(path)
 
 	// 1. 로컬에 helm manifest의 git repo clone
-	err := gitclient.Clone(url, path, revision)
+	_, err := gitclient.Clone(url, path, revision)
 	require.Equal(t, err, nil)
 
 	// 2. 로컬에 저장된 경로를 이용하여 chart install
