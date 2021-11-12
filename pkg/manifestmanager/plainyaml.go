@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
@@ -17,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 )
 
 type plainYamlManager struct {
@@ -45,7 +43,8 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 		return err
 	}
 
-	urls, err := m.getManifestURLList(app)
+	var manifestInfos []string
+	manifestInfos, err := m.GitCli.GetManifestInfos(app.Spec.Source.Path, app.Spec.Source.TargetRevision, manifestInfos)
 	if err != nil {
 		log.Error(err, "GetManifestURLList failed..")
 		return err
@@ -58,8 +57,8 @@ func (m *plainYamlManager) Sync(app *cdv1.Application, forced bool) error {
 
 	updatedDeployResources := make(map[string]*cdv1.DeployResource)
 
-	for _, url := range urls {
-		manifestRawobjs, err := m.objectFromManifest(url, app)
+	for _, info := range manifestInfos {
+		manifestRawobjs, err := m.GitCli.ObjectFromManifest(info, app.Spec.Destination.Namespace)
 		if err != nil {
 			log.Error(err, "Get object from manifest failed..")
 			return err
@@ -121,86 +120,6 @@ func (m *plainYamlManager) Clear(app *cdv1.Application) error {
 	}
 
 	return nil
-}
-
-// GetManifestURL gets a url of manifest file
-func (m *plainYamlManager) getManifestURLList(app *cdv1.Application) ([]string, error) {
-	revision := app.Spec.Source.TargetRevision // branch, tag, sha..
-	path := app.Spec.Source.Path
-
-	var manifestURLs []string
-
-	manifestURLs, err := m.recursivePathCheck(path, revision, manifestURLs)
-	if err != nil {
-		return nil, err
-	}
-
-	return manifestURLs, nil
-}
-
-func (m *plainYamlManager) recursivePathCheck(path, revision string, manifestURLs []string) ([]string, error) {
-	downloadURLs, err := m.GitCli.GetManifestURLs(path, revision)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range downloadURLs {
-		if downloadURLs[i].Type == "file" {
-			manifestURLs = append(manifestURLs, downloadURLs[i].DownloadURL)
-		} else if downloadURLs[i].Type == "dir" {
-			manifestURLs, err = m.recursivePathCheck(downloadURLs[i].Path, revision, manifestURLs)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return manifestURLs, nil
-}
-
-func (m *plainYamlManager) objectFromManifest(url string, app *cdv1.Application) ([]*unstructured.Unstructured, error) {
-	var manifestRawObjs []*unstructured.Unstructured
-
-	resp, err := m.HTTPClient.Get(url)
-	if err != nil {
-		log.Error(err, "http Get failed..")
-		return nil, err
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Error(err, "Read response body failed..")
-		return nil, err
-	}
-
-	stringYAMLManifests := splitMultipleObjectsYAML(body)
-
-	for _, stringYAMLManifest := range stringYAMLManifests {
-		byteYAMLManifest := []byte(stringYAMLManifest)
-
-		bytes, err := yaml.YAMLToJSON(byteYAMLManifest)
-		if err != nil {
-			log.Error(err, "YAMLToJSON failed..")
-			return nil, err
-		}
-
-		if string(bytes) == "null" {
-			continue
-		}
-
-		rawExt := &runtime.RawExtension{Raw: bytes}
-		manifestRawObj, err := bytesToUnstructuredObject(rawExt)
-		if err != nil {
-			log.Error(err, "BytesToUnstructuredObject failed..")
-			return nil, err
-		}
-
-		if len(manifestRawObj.GetNamespace()) == 0 {
-			manifestRawObj.SetNamespace(app.Spec.Destination.Namespace)
-		}
-		manifestRawObjs = append(manifestRawObjs, manifestRawObj)
-	}
-	return manifestRawObjs, nil
 }
 
 func (m *plainYamlManager) compareDeployWithManifest(app *cdv1.Application, manifestObj *unstructured.Unstructured) (*unstructured.Unstructured, error) {

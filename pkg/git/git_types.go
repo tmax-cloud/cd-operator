@@ -187,9 +187,3 @@ type Branch struct {
 	Name     string
 	CommitID string
 }
-
-type DownloadURL struct {
-	DownloadURL string `json:"download_url"`
-	Type        string `json:"type"`
-	Path        string `json:"path"`
-}

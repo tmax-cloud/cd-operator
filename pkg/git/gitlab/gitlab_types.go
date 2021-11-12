@@ -16,6 +16,14 @@
 
 package gitlab
 
+// RepoType is type of repo in tree
+type RepoType string
+
+const (
+	RepoTypeTree RepoType = "tree"
+	RepoTypeBlob RepoType = "blob"
+)
+
 // UserInfo is a body of user get API
 type UserInfo struct {
 	ID          int    `json:"id"`
@@ -80,6 +88,13 @@ type BranchResponse struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
 	}
+}
+
+// TreeResponse is a response struct for tree request
+type TreeResponse struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Path string `json:"path"`
 }
 
 // MergeAcceptRequest is a request struct to merge a merge request
