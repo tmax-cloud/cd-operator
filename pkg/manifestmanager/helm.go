@@ -7,10 +7,10 @@ import (
 	gohelm "github.com/mittwald/go-helm-client"
 	cdv1 "github.com/tmax-cloud/cd-operator/api/v1"
 	"github.com/tmax-cloud/cd-operator/pkg/cluster"
+	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager/utils"
 	"github.com/tmax-cloud/cd-operator/util/gitclient"
 	"github.com/tmax-cloud/cd-operator/util/helmclient"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
@@ -138,7 +138,7 @@ func (m *helmManager) objectFromManifest(chartSpec *gohelm.ChartSpec, app *cdv1.
 		return nil, err
 	}
 
-	stringYAMLManifests := splitMultipleObjectsYAML([]byte(manifest))
+	stringYAMLManifests := utils.SplitMultipleObjectsYAML([]byte(manifest))
 
 	for _, stringYAMLManifest := range stringYAMLManifests {
 		byteYAMLManifest := []byte(stringYAMLManifest)
@@ -158,8 +158,7 @@ func (m *helmManager) objectFromManifest(chartSpec *gohelm.ChartSpec, app *cdv1.
 			return nil, err
 		}
 
-		rawExt := &runtime.RawExtension{Raw: bytes}
-		manifestRawObj, err := bytesToUnstructuredObject(rawExt)
+		manifestRawObj, err := utils.BytesToUnstructuredObject(bytes)
 		if err != nil {
 			log.Error(err, "BytesToUnstructuredObject failed..")
 			return nil, err

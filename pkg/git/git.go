@@ -18,6 +18,8 @@ package git
 
 import (
 	"net/http"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // Client is a git client interface
@@ -63,7 +65,8 @@ type Client interface {
 	GetBranch(branch string) (*Branch, error)
 
 	// Manifest Files
-	GetManifestURLs(path, revision string) ([]DownloadURL, error)
+	GetManifestInfos(path, revision string, manifestInfos []string) ([]string, error)
+	ObjectFromManifest(info, namespace string) ([]*unstructured.Unstructured, error)
 }
 
 // IssueType is a type of the issue

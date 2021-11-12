@@ -17,15 +17,13 @@
 package fake
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
-	"strings"
 
 	"github.com/tmax-cloud/cd-operator/pkg/git"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -407,33 +405,16 @@ func DeleteLabel(repoName string, id int, label string) error {
 	return nil
 }
 
-// GetManifestURLs gets manifests' URLs
-func (c *Client) GetManifestURLs(path, revision string) ([]git.DownloadURL, error) {
-	var downloadURLs []git.DownloadURL
-	var downloadURL git.DownloadURL
+// GetManifestInfos gets fake info
+func (c *Client) GetManifestInfos(path, revision string, manifestInfos []string) ([]string, error) {
+	// TODO
+	return nil, nil
+}
 
-	testBody := map[string]string{
-		"guestbook":       `[{"name":"guestbook-test-svc.yaml","path":"guestbook/guestbook-test-svc.yaml","sha":"e8a4a27fbae4042ba3428098c0b899f3665c39e4","size":141,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-test-svc.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-test-svc.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/e8a4a27fbae4042ba3428098c0b899f3665c39e4","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-test-svc.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-test-svc.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/e8a4a27fbae4042ba3428098c0b899f3665c39e4","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-test-svc.yaml"}},{"name":"guestbook-ui-deployment.yaml","path":"guestbook/guestbook-ui-deployment.yaml","sha":"8a0975e363539eacfba296559ad6385cbedd1245","size":389,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-deployment.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-deployment.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/8a0975e363539eacfba296559ad6385cbedd1245","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-deployment.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-deployment.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/8a0975e363539eacfba296559ad6385cbedd1245","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-deployment.yaml"}},{"name":"guestbook-ui-svc.yaml","path":"guestbook/guestbook-ui-svc.yaml","sha":"fa173a2b2e84c2a3566a1572bbc65a72155b58d1","size":145,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-svc.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/fa173a2b2e84c2a3566a1572bbc65a72155b58d1","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/guestbook-ui-svc.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/guestbook-ui-svc.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/fa173a2b2e84c2a3566a1572bbc65a72155b58d1","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/guestbook-ui-svc.yaml"}},{"name":"test","path":"guestbook/test","sha":"7eb2aed0d0aadb4fd268b7e7921e9eb9c61d2a1e","size":0,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/tree/main/guestbook/test","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/trees/7eb2aed0d0aadb4fd268b7e7921e9eb9c61d2a1e","download_url":null,"type":"dir","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/trees/7eb2aed0d0aadb4fd268b7e7921e9eb9c61d2a1e","html":"https://github.com/tmax-cloud/cd-example-apps/tree/main/guestbook/test"}}]`,
-		"guestbook/test":  `[{"name":"guestbook-testui-deployment.yaml","path":"guestbook/test/guestbook-testui-deployment.yaml","sha":"28322ec77cc65392aee4a6ea312a7a8e67e04a71","size":399,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test/guestbook-testui-deployment.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/test/guestbook-testui-deployment.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/28322ec77cc65392aee4a6ea312a7a8e67e04a71","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/guestbook/test/guestbook-testui-deployment.yaml","type":"file","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/guestbook/test/guestbook-testui-deployment.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/28322ec77cc65392aee4a6ea312a7a8e67e04a71","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/guestbook/test/guestbook-testui-deployment.yaml"}}]`,
-		"deployment.yaml": `{"name":"deployment.yaml","path":"deployment.yaml","sha":"2d0f44780d8fe8108524a77f96d10da2231e1e90","size":345,"url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/deployment.yaml?ref=main","html_url":"https://github.com/tmax-cloud/cd-example-apps/blob/main/deployment.yaml","git_url":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/2d0f44780d8fe8108524a77f96d10da2231e1e90","download_url":"https://raw.githubusercontent.com/tmax-cloud/cd-example-apps/main/deployment.yaml","type":"file","content":"YXBpVmVyc2lvbjogYXBwcy92MQpraW5kOiBEZXBsb3ltZW50Cm1ldGFkYXRh\nOgogIG5hbWU6IHRlc3QtZGVwbG95LWZyb20tZ2l0CnNwZWM6CiAgdGVtcGxh\ndGU6CiAgICBtZXRhZGF0YToKICAgICAgbmFtZTogbmdpbngKICAgICAgbGFi\nZWxzOgogICAgICAgIGFwcHM6IHRlc3QtYXBwCiAgICBzcGVjOgogICAgICBj\nb250YWluZXJzOgogICAgICAgIC0gbmFtZTogbmdpbngtY29udGFpbmVyCiAg\nICAgICAgICBpbWFnZTogbmdpbngKICAgICAgICAgIHBvcnRzOgogICAgICAg\nICAgICAtIGNvbnRhaW5lclBvcnQ6IDgwCiAgc2VsZWN0b3I6CiAgICBtYXRj\naExhYmVsczoKICAgICAgYXBwczogdGVzdC1hcHAK\n","encoding":"base64","_links":{"self":"https://api.github.com/repos/tmax-cloud/cd-example-apps/contents/deployment.yaml?ref=main","git":"https://api.github.com/repos/tmax-cloud/cd-example-apps/git/blobs/2d0f44780d8fe8108524a77f96d10da2231e1e90","html":"https://github.com/tmax-cloud/cd-example-apps/blob/main/deployment.yaml"}}`,
-	}
+// ObjectFromManifest returns unstructured objects from a raw manifest file
+func (c *Client) ObjectFromManifest(info, namespace string) ([]*unstructured.Unstructured, error) {
+	// TODO
+	var manifestRawObjs []*unstructured.Unstructured
 
-	if path == "invalid" {
-		return nil, fmt.Errorf("404 not found")
-	}
-
-	body := io.NopCloser(strings.NewReader(testBody[path]))
-
-	raw, err := io.ReadAll(body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(raw, &downloadURLs); err != nil {
-		if err := json.Unmarshal(raw, &downloadURL); err != nil {
-			return nil, err
-		}
-		downloadURLs = append(downloadURLs, downloadURL)
-	}
-	return downloadURLs, nil
+	return manifestRawObjs, nil
 }

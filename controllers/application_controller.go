@@ -311,6 +311,7 @@ func (r *ApplicationReconciler) setWebhookRegisteredCond(instance *cdv1.Applicat
 		webhookRegistered.Reason = cdv1.ApplicationConditionReasonNoGitToken
 		webhookRegistered.Message = "Skipped to register webhook"
 		meta.SetStatusCondition(&instance.Status.Conditions, *webhookRegistered)
+		return
 	}
 
 	// Register only if the condition is false

@@ -25,7 +25,10 @@ import (
 	"strings"
 
 	"github.com/tmax-cloud/cd-operator/pkg/git"
+	"github.com/tmax-cloud/cd-operator/pkg/manifestmanager/utils"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 // Client is a gitlab client struct
@@ -488,10 +491,70 @@ func (c *Client) GetBranch(branch string) (*git.Branch, error) {
 	return &git.Branch{Name: resp.Name, CommitID: resp.Commit.ID}, nil
 }
 
-// GetManifestURLs gets manifests' URLs
-func (c *Client) GetManifestURLs(path, revision string) ([]git.DownloadURL, error) {
-	// TODO
-	return nil, nil
+// GetManifestInfos gets info to download manifests
+func (c *Client) GetManifestInfos(path, revision string, manifestInfos []string) ([]string, error) {
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/tree?path=%s&ref=%s", c.GitAPIURL, url.QueryEscape(c.GitRepository), path, revision)
+
+	raw, _, err := c.requestHTTP(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var repos []TreeResponse
+	if err := json.Unmarshal(raw, &repos); err != nil {
+		return nil, err
+	}
+
+	for _, repo := range repos {
+		switch repo.Type {
+		case string(RepoTypeBlob):
+			manifestInfos = append(manifestInfos, repo.ID)
+		case string(RepoTypeTree):
+			manifestInfos, err = c.GetManifestInfos(repo.Path, revision, manifestInfos)
+			if err != nil {
+				return nil, err
+			}
+		default:
+		}
+	}
+	return manifestInfos, nil
+}
+
+// ObjectFromManifest returns unstructured objects from a raw manifest file
+func (c *Client) ObjectFromManifest(info, namespace string) ([]*unstructured.Unstructured, error) {
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/blobs/%s/raw", c.GitAPIURL, url.QueryEscape(c.GitRepository), info)
+	var manifestRawObjs []*unstructured.Unstructured
+
+	raw, _, err := c.requestHTTP(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	stringYAMLManifests := utils.SplitMultipleObjectsYAML(raw)
+
+	for _, stringYAMLManifest := range stringYAMLManifests {
+		byteYAMLManifest := []byte(stringYAMLManifest)
+
+		bytes, err := yaml.YAMLToJSON(byteYAMLManifest)
+		if err != nil {
+			return nil, err
+		}
+
+		if string(bytes) == "null" {
+			continue
+		}
+
+		manifestRawObj, err := utils.BytesToUnstructuredObject(bytes)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(manifestRawObj.GetNamespace()) == 0 {
+			manifestRawObj.SetNamespace(namespace)
+		}
+		manifestRawObjs = append(manifestRawObjs, manifestRawObj)
+	}
+	return manifestRawObjs, nil
 }
 
 func (c *Client) requestHTTP(method, apiURL string, data interface{}) ([]byte, http.Header, error) {

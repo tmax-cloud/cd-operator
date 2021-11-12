@@ -16,6 +16,14 @@
 
 package github
 
+// ContentType is type of contents from repository
+type ContentType string
+
+const (
+	ContentTypeDir  ContentType = "dir"
+	ContentTypeFile ContentType = "file"
+)
+
 // UserInfo is a body of user get API
 type UserInfo struct {
 	ID       int    `json:"id"`
@@ -96,4 +104,11 @@ type CommitResponse struct {
 			Email string `json:"email"`
 		} `json:"committer"`
 	} `json:"commit"`
+}
+
+// ContentResponse is content struct from response
+type ContentResponse struct {
+	DownloadURL string `json:"download_url"`
+	Type        string `json:"type"`
+	Path        string `json:"path"`
 }
