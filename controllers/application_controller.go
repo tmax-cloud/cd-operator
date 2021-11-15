@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -177,6 +178,13 @@ func (r *ApplicationReconciler) finalizeApp(instance *cdv1.Application) error {
 		r.Log.Error(err, "Delete webhook failed..")
 		return err
 	}
+
+	if instance.Spec.Source.Type == cdv1.ApplicationSourceTypeHelm {
+		if err := r.clearGitRepo(instance); err != nil {
+			r.Log.Error(err, "Delete git repo failed..")
+			return err
+		}
+	}
 	return nil
 }
 
@@ -218,6 +226,14 @@ func (r *ApplicationReconciler) clearWebhook(instance *cdv1.Application) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) clearGitRepo(instance *cdv1.Application) error {
+	if err := os.RemoveAll("/tmp/repo-" + instance.Name + "-" + instance.Namespace); err != nil {
+		r.Log.Error(err, "os.Remove All failed")
+		return err
 	}
 	return nil
 }

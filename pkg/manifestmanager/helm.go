@@ -43,8 +43,31 @@ func NewHelmManager(ctx context.Context, cli client.Client) ManifestManager {
 }
 
 func (m *helmManager) Sync(app *cdv1.Application, forced bool) error {
-	if err := m.gitRepoClone(app); err != nil {
-		return err
+	/* TODO : 이 로직으로는 분기 구별 불가. app.Spec.Source.Helm.ClonedRepoPath 값의 업데이트가 왜 2~3번만에 되는걸까?
+	if app.Spec.Source.Helm.ClonedRepoPath == "" {
+		log.Info("Start to clone..")
+		if err := m.gitRepoClone(app); err != nil {
+			return err
+		}
+	} else {
+		log.Info("Already cloned..pull after fetch")
+		if err := m.gitFetchAndPull(app); err != nil {
+			return err
+		}
+	}
+	*/
+	expectedPath := "/tmp/repo-" + app.Name + "-" + app.Namespace
+	_, err := os.Stat(expectedPath)
+	if os.IsNotExist(err) {
+		log.Info("Start to clone..")
+		if err := m.gitRepoClone(app); err != nil {
+			return err
+		}
+	} else if err == nil {
+		log.Info("Already cloned..pull after fetch")
+		if err := m.gitPull(app); err != nil {
+			return err
+		}
 	}
 
 	chartSpec := setChartSpec(app)
@@ -131,6 +154,22 @@ func (m *helmManager) gitRepoClone(app *cdv1.Application) error {
 	return nil
 }
 
+func (m *helmManager) gitPull(app *cdv1.Application) error {
+	clonedRepoPath := "/tmp/repo-" + app.Name + "-" + app.Namespace
+
+	repo, err := gitclient.Open(clonedRepoPath)
+	if err != nil {
+		return err
+	}
+
+	err = gitclient.Pull(repo)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (m *helmManager) objectFromManifest(chartSpec *gohelm.ChartSpec, app *cdv1.Application) ([]*unstructured.Unstructured, error) {
 	var manifestRawObjs []*unstructured.Unstructured
 
@@ -175,21 +214,18 @@ func (m *helmManager) objectFromManifest(chartSpec *gohelm.ChartSpec, app *cdv1.
 }
 
 func (m *helmManager) installHelmChart(chartSpec *gohelm.ChartSpec, app *cdv1.Application, dryRun bool) (string, error) {
+	log.Info("Start to install helm chart...")
 	chartSpec.DryRun = dryRun
 	manifest, err := m.helmClient.InstallChart(chartSpec)
 	if err != nil {
 		panic(err)
 	}
 
-	// 로컬에 clone된 Repo 디렉토리 삭제
-	if !dryRun {
-		os.RemoveAll("/tmp/repo-" + app.Name + "-" + app.Namespace)
-	}
 	return manifest, nil
 }
 
 func (m *helmManager) uninstallRelease(app *cdv1.Application) error {
-	log.Info(app.Spec.Source.Helm.ReleaseName)
+	log.Info("Uninstall release " + app.Spec.Source.Helm.ReleaseName)
 	err := m.helmClient.UninstallReleaseByName(app.Name + "-" + app.Namespace)
 	if err != nil {
 		return err
